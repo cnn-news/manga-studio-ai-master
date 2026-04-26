@@ -903,6 +903,7 @@ const App = {
     },
 
     resetSettings() {
+        if (this._previewRaf) { cancelAnimationFrame(this._previewRaf); this._previewRaf = null; }
         const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
         // Folders
         setVal('image-folder',  '');
@@ -1119,7 +1120,12 @@ const App = {
         const on = document.getElementById('subtitle-enabled')?.checked;
         const panel = document.getElementById('subtitle-panel');
         if (panel) panel.style.display = on ? '' : 'none';
-        if (on) this.renderSubPreview(document.querySelector('.sub-style-btn.active')?.dataset.style || 'karaoke');
+        if (on) {
+            this.renderSubPreview(document.querySelector('.sub-style-btn.active')?.dataset.style || 'karaoke');
+        } else {
+            // Stop animation when panel is hidden
+            if (this._previewRaf) { cancelAnimationFrame(this._previewRaf); this._previewRaf = null; }
+        }
     },
 
     toggleSubtitleSource(source) {
@@ -1136,61 +1142,155 @@ const App = {
         this.renderSubPreview(el.dataset.style);
     },
 
+    // ── Subtitle canvas preview — animated loop ───────────────
     renderSubPreview(style) {
+        if (this._previewRaf) {
+            cancelAnimationFrame(this._previewRaf);
+            this._previewRaf = null;
+        }
         const canvas = document.getElementById('sub-preview-canvas');
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+
+        // Synced with SUBTITLE_PRESETS in subtitle_engine.py
+        const STYLES = {
+            youtube_classic: { color:'#fff',     bg:'rgba(0,0,0,0.72)', size:11, bold:false, italic:false, outline:0, shadow:false, anim:'fade'      },
+            netflix_style:   { color:'#fff',     bg:null,               size:13, bold:true,  italic:false, outline:3, shadow:true,  anim:'fade'      },
+            minimal:         { color:'#eeeeee',  bg:null,               size:10, bold:false, italic:false, outline:1, shadow:false, anim:'fade_slow' },
+            social_media:    { color:'#FFE500',  bg:null,               size:13, bold:true,  italic:false, outline:2, shadow:true,  anim:'pop'       },
+            karaoke:         { color:'#FFE500',  bg:'rgba(0,0,30,0.78)',size:12, bold:true,  italic:false, outline:0, shadow:false, anim:'karaoke',  karaokeUnread:'rgba(255,255,255,0.9)' },
+            anime:           { color:'#fff',     bg:null,               size:14, bold:true,  italic:false, outline:6, shadow:false, anim:'flash'     },
+            cinematic:       { color:'#f5f5dc',  bg:'rgba(0,0,0,0.45)',size:10, bold:false, italic:true,  outline:0, shadow:false, anim:'fade_slow' },
+            pop:             { color:'#FF6B9D',  bg:null,               size:13, bold:true,  italic:false, outline:3, shadow:true,  anim:'pop'       },
+        };
+        const s      = STYLES[style] || STYLES.youtube_classic;
+        const sample = 'Đây là phụ đề mẫu của bạn ✨';
+        const ctx    = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
 
-        // Sync with SUBTITLE_PRESETS in subtitle_engine.py — all pos='bottom' (center-bottom)
-        const MAP = {
-            youtube_classic: { color: '#fff',     bg: 'rgba(0,0,0,0.72)',  size: 11, bold: false, italic: false, outline: 0, shadow: false, pos: 'bottom' },
-            netflix_style:   { color: '#fff',     bg: null,                size: 13, bold: true,  italic: false, outline: 3, shadow: true,  pos: 'bottom' },
-            minimal:         { color: '#eeeeee',  bg: null,                size: 10, bold: false, italic: false, outline: 1, shadow: false, pos: 'bottom' },
-            social_media:    { color: '#FFE500',  bg: null,                size: 13, bold: true,  italic: false, outline: 2, shadow: true,  pos: 'bottom' },
-            karaoke:         { color: '#FFE500',  bg: 'rgba(0,0,30,0.75)', size: 12, bold: true,  italic: false, outline: 0, shadow: false, pos: 'bottom' },
-            anime:           { color: '#ffffff',  bg: null,                size: 14, bold: true,  italic: false, outline: 6, shadow: false, pos: 'bottom' },
-            cinematic:       { color: '#f5f5dc',  bg: 'rgba(0,0,0,0.45)', size: 10, bold: false, italic: true,  outline: 0, shadow: false, pos: 'bottom' },
-            pop:             { color: '#FF6B9D',  bg: null,                size: 13, bold: true,  italic: false, outline: 3, shadow: true,  pos: 'bottom' },
+        const CYCLE = { karaoke:3600, fade:3200, fade_slow:4000, pop:2800, flash:2600 };
+        const cycleMs = CYCLE[s.anim] || 3200;
+        const t0 = performance.now();
+
+        const fontDecl = () =>
+            [s.italic ? 'italic':'', s.bold ? 'bold':'', `${s.size}px`, 'Arial,sans-serif']
+            .filter(Boolean).join(' ');
+
+        const drawBg = () => {
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#0d0d1a';
+            ctx.fillRect(0, 0, W, H);
+            // simulated video frame halves
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillRect(4, 4, W/2-8, H-8);
+            ctx.fillRect(W/2+4, 4, W/2-8, H-8);
         };
-        const s = MAP[style] || MAP.youtube_classic;
-        const sample = 'Đây là phụ đề mẫu của bạn ✨';
 
-        // Background
-        ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#0d0d1a';
-        ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = 'rgba(255,255,255,0.03)';
-        ctx.fillRect(4, 4, W/2 - 8, H - 8);
-        ctx.fillRect(W/2 + 4, 4, W/2 - 8, H - 8);
+        const drawText = (alpha, x, y, tw) => {
+            ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+            if (s.bg) {
+                ctx.fillStyle = s.bg;
+                ctx.fillRect(Math.max(0, x-8), y-s.size-3, Math.min(tw+16, W), s.size+10);
+            }
+            if (s.outline > 0) {
+                ctx.font = fontDecl();
+                ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+                ctx.lineWidth   = s.outline * 1.5;
+                ctx.lineJoin    = 'round';
+                ctx.strokeText(sample, x, y);
+            }
+            if (s.shadow) {
+                ctx.shadowColor   = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur    = 5;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+            }
+            ctx.fillStyle = s.color;
+            ctx.fillText(sample, x, y);
+            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+        };
 
-        const fontDecl = [s.italic ? 'italic' : '', s.bold ? 'bold' : '', `${s.size}px`, 'Arial,sans-serif'].filter(Boolean).join(' ');
-        ctx.font = fontDecl;
-        const tw = ctx.measureText(sample).width;
-        const tx = Math.max(6, (W - tw) / 2);
-        // All positions are center-bottom in the engine; preview matches
-        const ty = s.pos === 'top' ? s.size + 6 : H - 8;
+        const frame = (now) => {
+            const t = ((now - t0) % cycleMs) / cycleMs; // 0..1 per cycle
+            drawBg();
 
-        if (s.bg) {
-            ctx.fillStyle = s.bg;
-            ctx.fillRect(Math.max(0, tx - 8), ty - s.size - 3, Math.min(tw + 16, W), s.size + 10);
-        }
-        if (s.outline > 0) {
-            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-            ctx.lineWidth = s.outline * 1.5;
-            ctx.lineJoin = 'round';
-            ctx.strokeText(sample, tx, ty);
-        }
-        if (s.shadow) {
-            ctx.shadowColor = 'rgba(0,0,0,0.85)';
-            ctx.shadowBlur = 6;
-            ctx.shadowOffsetX = 1;
-            ctx.shadowOffsetY = 1;
-        }
-        ctx.fillStyle = s.color;
-        ctx.fillText(sample, tx, ty);
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
+            ctx.font = fontDecl();
+            const tw = ctx.measureText(sample).width;
+            const tx = Math.max(6, (W - tw) / 2);
+            const ty = H - 9;
+
+            // ── per-anim logic ──────────────────────────────────────────
+            if (s.anim === 'karaoke') {
+                // Phase: 0→0.08 fade-in | 0.08→0.82 sweep | 0.82→0.92 hold | 0.92→1 fade-out
+                let alpha = 1;
+                if (t < 0.08)       alpha = t / 0.08;
+                else if (t > 0.92)  alpha = 1 - (t - 0.92) / 0.08;
+
+                ctx.globalAlpha = alpha;
+                // Background box
+                if (s.bg) {
+                    ctx.fillStyle = s.bg;
+                    ctx.fillRect(Math.max(0, tx-8), ty-s.size-3, Math.min(tw+16, W), s.size+10);
+                }
+                // 1. Draw all text in "unread" color
+                ctx.fillStyle = s.karaokeUnread || 'rgba(255,255,255,0.85)';
+                ctx.fillText(sample, tx, ty);
+                // 2. Clip to sweep region and draw in highlight color
+                const sweepProgress = t < 0.08 ? 0 : t > 0.88 ? 1 : (t - 0.08) / 0.80;
+                const sweepX = tx + sweepProgress * tw;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(tx - 1, 0, sweepX - tx + 2, H);
+                ctx.clip();
+                ctx.fillStyle = s.color;
+                ctx.fillText(sample, tx, ty);
+                ctx.restore();
+                ctx.globalAlpha = 1;
+
+            } else if (s.anim === 'pop') {
+                // Phase: 0→0.12 scale-in | 0.12→0.82 visible | 0.82→1 fade-out
+                let alpha = 1, scale = 1;
+                if (t < 0.12) {
+                    const p = t / 0.12;
+                    // overshoot spring: ease-out back
+                    scale = 0.5 + 0.6 * p * (2.2 - p);
+                    alpha = p;
+                } else if (t > 0.82) {
+                    alpha = 1 - (t - 0.82) / 0.18;
+                }
+                ctx.save();
+                ctx.translate(W/2, ty);
+                ctx.scale(scale, scale);
+                ctx.translate(-W/2, -ty);
+                drawText(alpha, tx, ty, tw);
+                ctx.restore();
+
+            } else if (s.anim === 'flash') {
+                // Near-instant appear, then hold
+                let alpha = 1;
+                if (t < 0.04)       alpha = t / 0.04;
+                else if (t > 0.88)  alpha = 1 - (t - 0.88) / 0.12;
+                drawText(alpha, tx, ty, tw);
+
+            } else if (s.anim === 'fade_slow') {
+                // Slow fade in/out
+                let alpha = 1;
+                if (t < 0.20)       alpha = t / 0.20;
+                else if (t > 0.75)  alpha = 1 - (t - 0.75) / 0.25;
+                drawText(alpha, tx, ty, tw);
+
+            } else {
+                // 'fade' — standard fade in/out
+                let alpha = 1;
+                if (t < 0.12)       alpha = t / 0.12;
+                else if (t > 0.80)  alpha = 1 - (t - 0.80) / 0.20;
+                drawText(alpha, tx, ty, tw);
+            }
+
+            this._previewRaf = requestAnimationFrame(frame);
+        };
+
+        this._previewRaf = requestAnimationFrame(frame);
     },
 
     // ── Internal helper: generate SRT and return the path (used by startRender) ──

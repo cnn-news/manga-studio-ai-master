@@ -3,58 +3,63 @@ import re
 
 from config import DEFAULT_VIDEO_CODEC
 
-# ── presets ───────────────────────────────────────────────────────────────────
+# ── presets  (fontsize is in pixels at PlayResY=1080) ─────────────────────────
 
-# fontsize calibrated for FFmpeg SRT→ASS default PlayResY=288
-# (scale: fontsize / 288 * video_height = rendered pixel height)
-# Target ~50-65px at 1080p → fontsize ≈ 13–18
 SUBTITLE_PRESETS = {
     "youtube_classic": {
-        "fontsize": 14, "fontcolor": "white",   "bg_color": "black@0.72",
+        "fontsize": 40, "fontcolor": "white",   "bg_color": "black@0.72",
         "borderw": 0, "shadow": 0, "bold": False, "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "fade",          # \fad fade-in/out
     },
     "netflix_style": {
-        "fontsize": 16, "fontcolor": "white",   "bg_color": "none",
+        "fontsize": 44, "fontcolor": "white",   "bg_color": "none",
         "borderw": 3, "shadow": 1, "bold": True,  "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "fade",
     },
     "minimal": {
-        "fontsize": 13, "fontcolor": "#eeeeee", "bg_color": "none",
+        "fontsize": 36, "fontcolor": "#eeeeee", "bg_color": "none",
         "borderw": 1, "shadow": 0, "bold": False, "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "fade_slow",     # longer, subtler fade
     },
     "social_media": {
-        "fontsize": 17, "fontcolor": "#FFE500", "bg_color": "none",
+        "fontsize": 46, "fontcolor": "#FFE500", "bg_color": "none",
         "borderw": 2, "shadow": 2, "bold": True,  "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "pop",           # quick pop-in
     },
     "karaoke": {
-        "fontsize": 16, "fontcolor": "#FFE500", "bg_color": "black@0.75",
+        "fontsize": 42, "fontcolor": "#FFE500", "bg_color": "black@0.75",
         "borderw": 0, "shadow": 0, "bold": True,  "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "karaoke",       # \kf word-by-word sweep
+        "secondary": "white",    # unread-text color for \kf
     },
     "anime": {
-        "fontsize": 18, "fontcolor": "white",   "bg_color": "none",
+        "fontsize": 52, "fontcolor": "white",   "bg_color": "none",
         "borderw": 6, "shadow": 0, "bold": True,  "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "flash",         # instant appear
     },
     "cinematic": {
-        "fontsize": 13, "fontcolor": "#f5f5dc", "bg_color": "black@0.45",
+        "fontsize": 38, "fontcolor": "#f5f5dc", "bg_color": "black@0.45",
         "borderw": 0, "shadow": 0, "bold": False, "italic": True,
-        "position": "bottom", "margin_v": 20, "fontname": "Georgia",
+        "position": "bottom", "margin_v": 45, "fontname": "Georgia",
+        "anim": "fade_slow",
     },
     "pop": {
-        "fontsize": 17, "fontcolor": "#FF6B9D", "bg_color": "none",
+        "fontsize": 46, "fontcolor": "#FF6B9D", "bg_color": "none",
         "borderw": 3, "shadow": 2, "bold": True,  "italic": False,
-        "position": "bottom", "margin_v": 20, "fontname": "Arial",
+        "position": "bottom", "margin_v": 45, "fontname": "Arial",
+        "anim": "pop",
     },
     "none": None,
 }
 
 # ── color helpers ─────────────────────────────────────────────────────────────
 
-# Named colors in RGB
 _COLOR_RGB: dict[str, tuple[int, int, int]] = {
     "white":  (255, 255, 255),
     "yellow": (255, 255, 0),
@@ -67,13 +72,9 @@ _COLOR_RGB: dict[str, tuple[int, int, int]] = {
 
 
 def _color_to_ass(color_str: str) -> str:
-    """Convert color string to ASS &HAABBGGRR hex.
+    """Convert 'colorname[@opacity]' or '#RRGGBB[@opacity]' → ASS &HAABBGGRR.
 
-    Accepts:
-      - Named colors: 'white', 'yellow', etc.
-      - Hex colors:   '#RRGGBB'
-      - With opacity: 'white@0.7' or '#FF6B9D@0.8'
-    ASS channel order is AABBGGRR; AA=00 = fully opaque.
+    ASS channel order: AA=00 fully opaque, BB GG RR.
     """
     alpha = 0
     raw = color_str.strip()
@@ -87,8 +88,6 @@ def _color_to_ass(color_str: str) -> str:
             pass
 
     raw = raw.strip()
-
-    # Hex color #RRGGBB
     if raw.startswith("#") and len(raw) == 7:
         try:
             r = int(raw[1:3], 16)
@@ -102,32 +101,45 @@ def _color_to_ass(color_str: str) -> str:
     return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
 
 
-def _escape_filter_path(path: str) -> str:
-    """Normalize and escape a path for embedding in an FFmpeg filter string.
+def _color_transparent() -> str:
+    return "&H00000000"
 
-    On Windows, drive-letter colons (e.g. C:/) must be escaped as C\\:/.
-    Spaces are safe inside single-quoted filter arguments.
-    """
+
+def _escape_filter_path(path: str) -> str:
     p = os.path.abspath(path).replace("\\", "/")
     if len(p) > 1 and p[1] == ":":
         p = p[0] + "\\:" + p[2:]
     return p
 
 
-# ── timestamp helper ──────────────────────────────────────────────────────────
+# ── timestamp helpers ──────────────────────────────────────────────────────────
 
 _TS_RE = re.compile(
     r"^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}"
 )
 
 
+def _srt_ts_to_ms(ts: str) -> int:
+    """'HH:MM:SS,mmm' → milliseconds."""
+    ts = ts.strip().replace(",", ".")
+    h, m, rest = ts.split(":")
+    s, ms = rest.split(".")
+    return int(h) * 3_600_000 + int(m) * 60_000 + int(s) * 1_000 + int(ms[:3])
+
+
+def _ms_to_ass_time(ms: int) -> str:
+    """milliseconds → ASS 'H:MM:SS.cc' (centisecond precision)."""
+    cs   = ms // 10
+    secs = cs // 100; cs %= 100
+    mins = secs // 60; secs %= 60
+    hrs  = mins // 60; mins %= 60
+    return f"{hrs}:{mins:02d}:{secs:02d}.{cs:02d}"
+
+
 def _seconds_to_srt(seconds: float) -> str:
-    """Convert a float second value to SRT timestamp HH:MM:SS,mmm."""
     ms = int(round((seconds % 1) * 1000))
-    total_s = int(seconds)
-    s = total_s % 60
-    m = (total_s // 60) % 60
-    h = total_s // 3600
+    t  = int(seconds)
+    s  = t % 60; m = (t // 60) % 60; h = t // 3600
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
@@ -135,13 +147,9 @@ def _seconds_to_srt(seconds: float) -> str:
 
 class SubtitleEngine:
 
-    def validate_srt(self, srt_path: str) -> dict:
-        """Parse an SRT file and report validity.
+    # ── SRT validation ────────────────────────────────────────────────────
 
-        Returns {"ok": bool, "entry_count": int, "errors": list[str]}.
-        Checks: file readable, non-empty, each block has an integer index,
-        a valid HH:MM:SS,mmm --> HH:MM:SS,mmm timestamp, and non-empty text.
-        """
+    def validate_srt(self, srt_path: str) -> dict:
         result: dict = {"ok": False, "entry_count": 0, "errors": []}
         try:
             with open(srt_path, encoding="utf-8-sig") as fh:
@@ -153,7 +161,6 @@ class SubtitleEngine:
             result["errors"].append(str(exc))
             return result
 
-        # Split on blank lines into blocks
         blocks = [b.strip() for b in re.split(r"\n\s*\n", content) if b.strip()]
         if not blocks:
             result["errors"].append("File is empty or contains no subtitle blocks")
@@ -162,90 +169,160 @@ class SubtitleEngine:
         for n, block in enumerate(blocks, 1):
             lines = block.splitlines()
             if len(lines) < 3:
-                result["errors"].append(
-                    f"Block {n}: expected at least 3 lines, got {len(lines)}"
-                )
+                result["errors"].append(f"Block {n}: too few lines ({len(lines)})")
                 continue
             if not lines[0].strip().isdigit():
-                result["errors"].append(
-                    f"Block {n}: first line is not a sequence number: '{lines[0].strip()}'"
-                )
+                result["errors"].append(f"Block {n}: non-numeric sequence number")
             if not _TS_RE.match(lines[1].strip()):
-                result["errors"].append(
-                    f"Block {n}: invalid timestamp line: '{lines[1].strip()}'"
-                )
+                result["errors"].append(f"Block {n}: invalid timestamp")
             if not "\n".join(lines[2:]).strip():
-                result["errors"].append(f"Block {n}: subtitle text is empty")
+                result["errors"].append(f"Block {n}: empty text")
 
         result["entry_count"] = len(blocks)
         result["ok"] = len(result["errors"]) == 0 and len(blocks) > 0
         return result
 
-    def build_subtitle_filter(
-        self,
-        srt_path: str,
-        preset: str,
-        custom: dict = None,
-    ) -> str:
-        """Return an FFmpeg subtitles filter string with force_style applied.
+    # ── SRT parser ────────────────────────────────────────────────────────
 
-        All presets default to Alignment=2 (center-bottom).
-        MarginV is in ASS units relative to PlayResY=288 (FFmpeg SRT default).
-        At 1080p: MarginV=20 ≈ 75px from bottom edge.
+    def _parse_srt(self, srt_path: str) -> list[dict]:
+        """Return list of {start_ms, end_ms, text}."""
+        with open(srt_path, encoding="utf-8-sig") as fh:
+            content = fh.read()
+
+        entries = []
+        blocks  = [b.strip() for b in re.split(r"\n\s*\n", content) if b.strip()]
+        arrow_re = re.compile(
+            r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})"
+        )
+        for block in blocks:
+            lines = block.splitlines()
+            if len(lines) < 3:
+                continue
+            m = arrow_re.search(lines[1])
+            if not m:
+                continue
+            text = " ".join(l.strip() for l in lines[2:] if l.strip())
+            entries.append({
+                "start_ms": _srt_ts_to_ms(m.group(1)),
+                "end_ms":   _srt_ts_to_ms(m.group(2)),
+                "text":     text,
+            })
+        return entries
+
+    # ── ASS generator ─────────────────────────────────────────────────────
+
+    def generate_ass(self, srt_path: str, preset: str, output_path: str) -> str:
+        """Convert SRT → styled ASS file for the given preset.
+
+        Uses PlayResX=1920, PlayResY=1080.  Font sizes in presets are in px.
+        Returns the output_path written.
         """
-        base = SUBTITLE_PRESETS.get(preset)
-        if base is None:
-            return ""
+        entries  = self._parse_srt(srt_path)
+        settings = dict(SUBTITLE_PRESETS.get(preset) or SUBTITLE_PRESETS["youtube_classic"])
 
-        settings = dict(base)
-        if custom:
-            settings.update(custom)
-
-        fontsize  = settings.get("fontsize", 14)
-        fontcolor = settings.get("fontcolor", "white")
-        bg_color  = settings.get("bg_color", "none")
+        fontname  = settings["fontname"]
+        fontsize  = settings["fontsize"]
+        bold      = 1 if settings.get("bold")   else 0
+        italic    = 1 if settings.get("italic")  else 0
         borderw   = settings.get("borderw", 1)
         shadow    = settings.get("shadow", 0)
-        position  = settings.get("position", "bottom")
-        fontname  = settings.get("fontname", "Arial")
-        bold      = 1 if settings.get("bold", False) else 0
-        italic    = 1 if settings.get("italic", False) else 0
-        margin_v  = settings.get("margin_v", 20)
+        margin_v  = settings.get("margin_v", 45)
+        bg_color  = settings.get("bg_color", "none")
+        anim      = settings.get("anim", "fade")
 
-        primary   = _color_to_ass(fontcolor)
-        outline_c = _color_to_ass("black")
-
-        # Alignment: 2 = center-bottom (default), 5 = center-middle, 8 = center-top
-        if position == "top":
-            alignment, mv = 8, margin_v
-        else:
-            # All other positions → center-bottom
-            alignment, mv = 2, margin_v
+        primary_c   = _color_to_ass(settings["fontcolor"])
+        # SecondaryColour: used for karaoke unread-text color
+        secondary_c = _color_to_ass(settings.get("secondary", "white"))
+        outline_c   = _color_to_ass("black")
 
         if bg_color and bg_color != "none":
-            back_color   = _color_to_ass(bg_color)
-            border_style = 4          # opaque box behind text
-            style_extra  = f",BackColour={back_color},BorderStyle={border_style}"
+            back_c       = _color_to_ass(bg_color)
+            border_style = 4   # filled box
         else:
-            border_style = 1          # outline-only
-            style_extra  = f",BorderStyle={border_style}"
+            back_c       = "&H00000000"
+            border_style = 1   # outline only
 
-        force_style = (
-            f"FontName={fontname},"
-            f"FontSize={fontsize},"
-            f"Bold={bold},"
-            f"Italic={italic},"
-            f"PrimaryColour={primary},"
-            f"OutlineColour={outline_c},"
-            f"Outline={borderw},"
-            f"Shadow={shadow},"
-            f"Alignment={alignment},"
-            f"MarginV={mv}"
-            + style_extra
+        style_line = (
+            f"Style: Default,{fontname},{fontsize},"
+            f"{primary_c},{secondary_c},{outline_c},{back_c},"
+            f"{bold},{italic},0,0,"
+            f"100,100,0,0,"
+            f"{border_style},{borderw},{shadow},"
+            f"2,10,10,{margin_v},1"
         )
 
-        escaped_path = _escape_filter_path(srt_path)
-        return f"subtitles='{escaped_path}':force_style='{force_style}'"
+        lines = [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "PlayResX: 1920",
+            "PlayResY: 1080",
+            "ScaledBorderAndShadow: yes",
+            "WrapStyle: 0",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour,"
+            " OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut,"
+            " ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow,"
+            " Alignment, MarginL, MarginR, MarginV, Encoding",
+            style_line,
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name,"
+            " MarginL, MarginR, MarginV, Effect, Text",
+        ]
+
+        for entry in entries:
+            start = _ms_to_ass_time(entry["start_ms"])
+            end   = _ms_to_ass_time(entry["end_ms"])
+            text  = self._apply_anim_tags(entry, anim)
+            lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8-sig") as fh:
+            fh.write("\n".join(lines) + "\n")
+
+        return output_path
+
+    def _apply_anim_tags(self, entry: dict, anim: str) -> str:
+        """Prepend ASS override tags to the subtitle text based on anim type."""
+        text     = entry["text"]
+        dur_ms   = max(1, entry["end_ms"] - entry["start_ms"])
+
+        if anim == "karaoke":
+            # Distribute duration evenly across words with \kf (fill sweep)
+            words = text.split()
+            if not words:
+                return text
+            ms_per_word = dur_ms / len(words)
+            cs_per_word = max(1, round(ms_per_word / 10))   # centiseconds
+            return " ".join(f"{{\\kf{cs_per_word}}}{w}" for w in words)
+
+        if anim == "fade":
+            fi = min(300, dur_ms // 4)
+            fo = min(200, dur_ms // 5)
+            return f"{{\\fad({fi},{fo})}}{text}"
+
+        if anim == "fade_slow":
+            fi = min(600, dur_ms // 3)
+            fo = min(400, dur_ms // 4)
+            return f"{{\\fad({fi},{fo})}}{text}"
+
+        if anim == "pop":
+            # Quick fade-in, normal fade-out
+            fi = min(80, dur_ms // 6)
+            fo = min(150, dur_ms // 4)
+            return f"{{\\fad({fi},{fo})}}{text}"
+
+        if anim == "flash":
+            # Near-instant appearance
+            fi = min(30, dur_ms // 8)
+            fo = min(50, dur_ms // 6)
+            return f"{{\\fad({fi},{fo})}}{text}"
+
+        # default: no tag
+        return text
+
+    # ── filter / command builders ─────────────────────────────────────────
 
     def burn_subtitles_command(
         self,
@@ -255,12 +332,22 @@ class SubtitleEngine:
         preset: str = "youtube_classic",
         custom: dict = None,
     ) -> list:
-        """Return an FFmpeg command that burns subtitles into a rendered video."""
-        subtitle_filter = self.build_subtitle_filter(srt_path, preset, custom)
+        """Return FFmpeg command that burns styled+animated subtitles.
 
-        if subtitle_filter:
+        Generates an ASS file next to the SRT, then uses the `ass` filter
+        so that karaoke \\kf and fade \\fad tags render correctly.
+        """
+        ass_path = os.path.splitext(srt_path)[0] + f"_{preset}.ass"
+        try:
+            self.generate_ass(srt_path, preset, ass_path)
+            vf = f"ass='{_escape_filter_path(ass_path)}'"
+        except Exception:
+            # Fallback: static subtitles filter
+            vf = self.build_subtitle_filter(srt_path, preset, custom)
+
+        if vf:
             video_opts = [
-                "-vf", subtitle_filter,
+                "-vf", vf,
                 "-c:v", DEFAULT_VIDEO_CODEC,
                 "-preset", "fast",
                 "-crf", "18",
@@ -278,43 +365,69 @@ class SubtitleEngine:
             output_video,
         ]
 
-    def get_preset_preview(self, preset: str) -> dict:
-        """Return a copy of the preset settings dict for UI display.
+    def build_subtitle_filter(
+        self,
+        srt_path: str,
+        preset: str,
+        custom: dict = None,
+    ) -> str:
+        """Fallback: static subtitles filter with force_style (no animation)."""
+        base = SUBTITLE_PRESETS.get(preset)
+        if base is None:
+            return ""
 
-        Returns {} for preset 'none'.
-        Raises ValueError for unknown preset names.
-        """
+        settings = dict(base)
+        if custom:
+            settings.update(custom)
+
+        fontsize  = settings.get("fontsize", 40)
+        fontcolor = settings.get("fontcolor", "white")
+        bg_color  = settings.get("bg_color", "none")
+        borderw   = settings.get("borderw", 1)
+        shadow    = settings.get("shadow", 0)
+        fontname  = settings.get("fontname", "Arial")
+        bold      = 1 if settings.get("bold")   else 0
+        italic    = 1 if settings.get("italic")  else 0
+        margin_v  = settings.get("margin_v", 45)
+
+        primary   = _color_to_ass(fontcolor)
+        outline_c = _color_to_ass("black")
+
+        if bg_color and bg_color != "none":
+            back_color   = _color_to_ass(bg_color)
+            style_extra  = f",BackColour={back_color},BorderStyle=4"
+        else:
+            style_extra  = ",BorderStyle=1"
+
+        force_style = (
+            f"FontName={fontname},FontSize={fontsize},"
+            f"Bold={bold},Italic={italic},"
+            f"PrimaryColour={primary},OutlineColour={outline_c},"
+            f"Outline={borderw},Shadow={shadow},"
+            f"Alignment=2,MarginV={margin_v}"
+            + style_extra
+        )
+        escaped_path = _escape_filter_path(srt_path)
+        return f"subtitles='{escaped_path}':force_style='{force_style}'"
+
+    # ── misc utilities ────────────────────────────────────────────────────
+
+    def get_preset_preview(self, preset: str) -> dict:
         if preset not in SUBTITLE_PRESETS:
-            raise ValueError(
-                f"Unknown preset '{preset}'. "
-                f"Available: {list(SUBTITLE_PRESETS.keys())}"
-            )
+            raise ValueError(f"Unknown preset '{preset}'.")
         settings = SUBTITLE_PRESETS[preset]
         return dict(settings) if settings else {}
 
     def create_dummy_srt(self, audio_durations: dict, output_path: str) -> str:
-        """Generate a placeholder SRT file from {filename: duration_seconds}.
-
-        Entries are sorted by filename so the order matches the image sequence.
-        Each entry contains editable placeholder text for the user.
-        Returns the path to the written file.
-        """
         entries = sorted(audio_durations.items())
-
-        blocks: list[str] = []
+        blocks:  list[str] = []
         current = 0.0
-
         for i, (filename, duration) in enumerate(entries, 1):
-            stem = os.path.splitext(filename)[0]
+            stem  = os.path.splitext(filename)[0]
             start = _seconds_to_srt(current)
             end   = _seconds_to_srt(current + max(duration, 0.0))
-            blocks.append(
-                f"{i}\n"
-                f"{start} --> {end}\n"
-                f"Slide {stem}: edit subtitle text here"
-            )
+            blocks.append(f"{i}\n{start} --> {end}\nSlide {stem}: edit subtitle here")
             current += duration
-
         content = "\n\n".join(blocks) + "\n"
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as fh:
