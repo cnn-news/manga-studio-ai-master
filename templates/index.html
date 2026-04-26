@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manga Studio AI</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SPLASH ════════════════════════════════ -->
+<div id="splash" class="splash">
+  <div class="splash-inner">
+    <div class="splash-logo">
+      <svg class="logo-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="42" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <circle cx="50" cy="50" r="10" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <circle cx="50" cy="8"  r="5" fill="var(--accent)"/>
+        <circle cx="50" cy="92" r="5" fill="var(--accent)"/>
+        <circle cx="8"  cy="50" r="5" fill="var(--accent)"/>
+        <circle cx="92" cy="50" r="5" fill="var(--accent)"/>
+        <circle cx="21" cy="21" r="5" fill="var(--accent)"/>
+        <circle cx="79" cy="79" r="5" fill="var(--accent)"/>
+        <circle cx="79" cy="21" r="5" fill="var(--accent)"/>
+        <circle cx="21" cy="79" r="5" fill="var(--accent)"/>
+        <path d="M50 33 L54 46 L67 50 L54 54 L50 67 L46 54 L33 50 L46 46 Z"
+              fill="var(--accent)" opacity="0.95"/>
+      </svg>
+    </div>
+    <div class="splash-name">Manga Studio AI</div>
+    <div class="splash-tagline">Biến ảnh manga thành video chuyên nghiệp</div>
+
+    <div class="splash-progress">
+      <div class="splash-track">
+        <div class="splash-fill" id="splash-fill"></div>
+      </div>
+      <div class="splash-steps">
+        <span class="splash-step" id="splash-step-0">Khởi động hệ thống…</span>
+        <span class="splash-step hidden" id="splash-step-1">Kiểm tra FFmpeg…</span>
+        <span class="splash-step hidden" id="splash-step-2">Tải cài đặt…</span>
+        <span class="splash-step hidden" id="splash-step-3">Sẵn sàng!</span>
+      </div>
+    </div>
+
+    <div class="splash-version">v1.0.0</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════ APP ═════════════════════════════════ -->
+<div id="app" class="app hidden">
+
+  <!-- ── HEADER ───────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-left">
+      <svg class="header-logo-icon" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="17" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <circle cx="20" cy="20" r="4"  fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <circle cx="20" cy="4"  r="2.5" fill="var(--accent)"/>
+        <circle cx="20" cy="36" r="2.5" fill="var(--accent)"/>
+        <circle cx="4"  cy="20" r="2.5" fill="var(--accent)"/>
+        <circle cx="36" cy="20" r="2.5" fill="var(--accent)"/>
+        <circle cx="8"  cy="8"  r="2.5" fill="var(--accent)"/>
+        <circle cx="32" cy="32" r="2.5" fill="var(--accent)"/>
+        <circle cx="32" cy="8"  r="2.5" fill="var(--accent)"/>
+        <circle cx="8"  cy="32" r="2.5" fill="var(--accent)"/>
+        <path d="M20 13 L22 19 L28 21 L22 23 L20 29 L18 23 L12 21 L18 19 Z" fill="var(--accent)"/>
+      </svg>
+      <span class="header-title">Manga Studio AI</span>
+      <span class="header-version">v1.0.0</span>
+    </div>
+    <div class="header-right">
+      <div class="btn-icon" id="btn-theme" onclick="toggleTheme()" title="Chuyển giao diện sáng/tối">
+        <svg class="icon-dark" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+        <svg class="icon-light hidden" viewBox="0 0 24 24"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41zm1.06-12.37l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41s-1.03-.39-1.41 0zM7.05 18.36l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41s-1.03-.39-1.41 0z"/></svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── BODY ─────────────────────────────────────────────────────────── -->
+  <div class="app-body">
+
+    <!-- ── SIDEBAR ────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Tab buttons -->
+      <div class="sidebar-tabs">
+        <div class="sidebar-tab active" id="stab-settings" onclick="switchSideTab('settings')">
+          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          Cài Đặt
+        </div>
+        <div class="sidebar-tab" id="stab-history" onclick="switchSideTab('history')">
+          <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+          Lịch Sử
+        </div>
+      </div>
+
+      <!-- ── Tab 1: Cài đặt — 2 cột ──────────────────────────────── -->
+      <div class="tab-pane active" id="tab-settings">
+        <div class="settings-cols">
+
+          <!-- ════════════ CỘT TRÁI ════════════ -->
+          <div class="settings-col">
+
+            <!-- § Thư Mục -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                <span class="section-title">Thư Mục</span>
+              </div>
+              <div class="section-body">
+                <div class="field-row">
+                  <label class="field-label">Ảnh manga</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="image-folder" placeholder="D:\manga\images" oninput="App.onImageFolderChange()">
+                    <div class="btn-browse" onclick="App.browseFolder('image-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
+                  </div>
+                  <div class="folder-msg" id="img-folder-msg"></div>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Audio</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="audio-folder" placeholder="D:\manga\audio" oninput="App.onAudioFolderChange()">
+                    <div class="btn-browse" onclick="App.browseFolder('audio-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
+                  </div>
+                  <div class="folder-msg" id="aud-folder-msg"></div>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Xuất video</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="output-folder" placeholder="D:\" value="D:/" oninput="App.validateFolders()">
+                    <div class="btn-browse" onclick="App.browseFolder('output-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- § Hiệu Ứng Hình Ảnh -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+                <span class="section-title">Hiệu Ứng Hình Ảnh</span>
+                <span class="toggle-label-sm">Ngẫu nhiên</span>
+                <label class="toggle-switch toggle-xs">
+                  <input type="checkbox" id="effect-random" checked onchange="App.toggleEffectRandom()">
+                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div class="section-body">
+                <!-- Effect picker — ẩn khi random=ON -->
+                <div id="effect-selector" class="hidden">
+                  <label class="field-label" style="margin-bottom:4px">Chọn hiệu ứng</label>
+                  <div class="fx-grid">
+                    <div class="fx-btn active" data-effect="zoom_pulse"     onclick="App.selectEffect(this)"><span class="fx-icon">🔍</span><span>Zoom Pulse</span></div>
+                    <div class="fx-btn"         data-effect="pan_horizontal" onclick="App.selectEffect(this)"><span class="fx-icon">↔️</span><span>Pan Ngang</span></div>
+                    <div class="fx-btn"         data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
+                    <div class="fx-btn"         data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
+                    <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Tốc độ hiệu ứng</label>
+                  <select class="field-select" id="effect-speed">
+                    <option value="slow">Chậm</option>
+                    <option value="normal" selected>Thường</option>
+                    <option value="fast">Nhanh</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- § Phụ Đề -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+                <span class="section-title">Phụ Đề</span>
+                <span class="toggle-label-sm">Bật</span>
+                <label class="toggle-switch toggle-xs">
+                  <input type="checkbox" id="subtitle-enabled" onchange="App.toggleSubtitle()">
+                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div class="section-body" id="subtitle-panel" style="display:none">
+
+                <!-- Style buttons (4×2) -->
+                <label class="field-label" style="margin-bottom:4px">Phong cách</label>
+                <div class="sub-styles-grid">
+                  <div class="sub-style-btn active" data-style="youtube_classic" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#000"><span style="color:#fff;font-size:7px">Aa</span></div>
+                    <span class="sub-label">YouTube</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="netflix_style" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#111"><span style="color:#fff;font-size:8px;font-weight:700;text-shadow:1px 1px 3px #000">Aa</span></div>
+                    <span class="sub-label">Netflix</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="minimal" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#0d0d1a"><span style="color:#eee;font-size:7px">Aa</span></div>
+                    <span class="sub-label">Minimal</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="social_media" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#0d0d1a"><span style="color:#FFE500;font-size:8px;font-weight:700">Aa</span></div>
+                    <span class="sub-label">Social</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="karaoke" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:rgba(0,0,40,0.9)"><span style="color:#FFE500;font-size:7px;font-weight:700;border-bottom:1px solid #FFE500">Aa</span></div>
+                    <span class="sub-label">Karaoke</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="anime" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#0d0d1a"><span style="color:#fff;font-size:9px;font-weight:900;-webkit-text-stroke:1px #000">Aa</span></div>
+                    <span class="sub-label">Anime</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="cinematic" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#0a0a14"><span style="color:#f5f5dc;font-size:7px;font-style:italic">Aa</span></div>
+                    <span class="sub-label">Cinematic</span>
+                  </div>
+                  <div class="sub-style-btn" data-style="pop" onclick="App.selectSubStyle(this)">
+                    <div class="sub-thumb" style="background:#0d0d1a"><span style="color:#FF6B9D;font-size:8px;font-weight:700;text-shadow:0 0 4px #FF6B9D">Aa</span></div>
+                    <span class="sub-label">Pop</span>
+                  </div>
+                </div>
+
+                <!-- Preview canvas -->
+                <canvas id="sub-preview-canvas" class="sub-preview-canvas" width="320" height="72"></canvas>
+
+                <!-- SRT file picker -->
+                <div class="field-row">
+                  <label class="field-label">File SRT (tuỳ chọn)</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="srt-path" placeholder="Chọn file .srt…">
+                    <div class="btn-browse" onclick="App.browseFile('srt-path', ['.srt'])"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div><!-- /col-left -->
+
+          <!-- ════════════ CỘT PHẢI ════════════ -->
+          <div class="settings-col">
+
+            <!-- § Dự Án -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+                <span class="section-title">Dự Án &amp; Xuất</span>
+              </div>
+              <div class="section-body">
+                <div class="field-row">
+                  <label class="field-label">Tên dự án</label>
+                  <input type="text" class="field-input" id="project-name" placeholder="my-manga-video">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Độ phân giải</label>
+                  <select class="field-select" id="resolution">
+                    <option value="1920x1080" selected>1920×1080 (Full HD)</option>
+                    <option value="1280x720">1280×720 (HD)</option>
+                    <option value="3840x2160">3840×2160 (4K)</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Frame rate</label>
+                  <select class="field-select" id="fps">
+                    <option value="24">24 FPS</option>
+                    <option value="30">30 FPS</option>
+                    <option value="60" selected>60 FPS</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Chất lượng</label>
+                  <select class="field-select" id="quality">
+                    <option value="fast">Nhanh (ultrafast)</option>
+                    <option value="balanced" selected>Cân bằng (medium)</option>
+                    <option value="quality">Cao (slow)</option>
+                  </select>
+                </div>
+                <div class="field-row field-actions">
+                  <div class="btn-sm" onclick="App.saveProject()">💾 Lưu</div>
+                  <div class="btn-sm btn-secondary" onclick="App.showProjectList()">📂 Tải</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- § Chuyển Cảnh -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>
+                <span class="section-title">Chuyển Cảnh</span>
+                <span class="toggle-label-sm">Ngẫu nhiên</span>
+                <label class="toggle-switch toggle-xs">
+                  <input type="checkbox" id="transition-random" checked onchange="App.toggleTransitionRandom()">
+                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div class="section-body">
+                <div id="transition-selector" class="hidden">
+                  <label class="field-label" style="margin-bottom:4px">Chọn chuyển cảnh</label>
+                  <div class="fx-grid">
+                    <div class="fx-btn active" data-transition="fade_black"     onclick="App.selectTransition(this)"><span class="fx-icon">⬛</span><span>Fade Đen</span></div>
+                    <div class="fx-btn"         data-transition="fade_white"     onclick="App.selectTransition(this)"><span class="fx-icon">⬜</span><span>Fade Trắng</span></div>
+                    <div class="fx-btn"         data-transition="cross_dissolve" onclick="App.selectTransition(this)"><span class="fx-icon">🔀</span><span>Dissolve</span></div>
+                    <div class="fx-btn"         data-transition="slide_left"     onclick="App.selectTransition(this)"><span class="fx-icon">◀️</span><span>Slide ←</span></div>
+                    <div class="fx-btn"         data-transition="slide_right"    onclick="App.selectTransition(this)"><span class="fx-icon">▶️</span><span>Slide →</span></div>
+                    <div class="fx-btn"         data-transition="zoom_transition" onclick="App.selectTransition(this)"><span class="fx-icon">🔭</span><span>Zoom</span></div>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Thời lượng chuyển cảnh</label>
+                  <select class="field-select" id="transition-duration">
+                    <option value="0.3">0.3 giây</option>
+                    <option value="0.5" selected>0.5 giây</option>
+                    <option value="1.0">1.0 giây</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- § Nâng Cao -->
+            <div class="settings-section">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
+                <span class="section-title">Nâng Cao</span>
+              </div>
+              <div class="section-body">
+                <div class="field-row field-row-toggle">
+                  <label class="field-label">
+                    Chuẩn hóa âm thanh
+                    <span class="info-icon" data-tooltip="Tự động cân bằng âm lượng giữa các đoạn audio — tránh tiếng quá to hoặc quá nhỏ giữa các slide.">i</span>
+                  </label>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="normalize-audio" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Fade in audio <span class="field-value" id="audio-fade-in-val">0.5s</span></label>
+                  <input type="range" class="field-range" id="audio-fade-in" min="0" max="3" step="0.5" value="0.5" oninput="document.getElementById('audio-fade-in-val').textContent=this.value+'s'">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Fade out audio <span class="field-value" id="audio-fade-out-val">1.0s</span></label>
+                  <input type="range" class="field-range" id="audio-fade-out" min="0" max="3" step="0.5" value="1.0" oninput="document.getElementById('audio-fade-out-val').textContent=this.value+'s'">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">
+                    Watermark
+                    <span class="info-icon" data-tooltip="Thêm chữ ký hoặc tên kênh vào góc video. Dùng để bảo vệ bản quyền nội dung.">i</span>
+                  </label>
+                  <input type="text" class="field-input" id="watermark-text" placeholder="© Your Channel">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">
+                    Video bitrate
+                    <span class="info-icon" data-tooltip="Chất lượng hình ảnh video. Cao = sắc nét hơn nhưng file lớn hơn. Khuyến nghị: 8M (Full HD), 20M (4K).">i</span>
+                  </label>
+                  <input type="text" class="field-input" id="video-bitrate" placeholder="8M">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">
+                    Audio bitrate
+                    <span class="info-icon" data-tooltip="Chất lượng âm thanh. Cao hơn = rõ hơn. 192k là chuẩn YouTube; 320k cho chất lượng cao nhất.">i</span>
+                  </label>
+                  <input type="text" class="field-input" id="audio-bitrate" placeholder="192k">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Video intro</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="intro-path" placeholder="Chọn file .mp4…" readonly>
+                    <div class="btn-browse" onclick="App.browseFile('intro-path',['.mp4','.avi','.mov','.mkv'])"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></div>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Video outro</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="outro-path" placeholder="Chọn file .mp4…" readonly>
+                    <div class="btn-browse" onclick="App.browseFile('outro-path',['.mp4','.avi','.mov','.mkv'])"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /col-right -->
+
+        </div><!-- /settings-cols -->
+      </div><!-- /tab-pane#settings -->
+
+      <!-- ── Tab 2: Lịch sử ────────────────────────────────────────── -->
+      <div class="tab-pane" id="tab-history">
+        <div class="history-toolbar">
+          <div class="btn-sm" onclick="App.loadHistory()">Làm mới</div>
+          <span class="history-count" id="history-count">—</span>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty" id="history-empty">
+            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+            <p>Chưa có lịch sử render</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Sidebar Footer ────────────────────────────────────────── -->
+      <div class="sidebar-footer">
+        <div class="btn-render" id="btn-render" onclick="App.startRender()">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <span id="btn-render-label">Bắt Đầu Render</span>
+        </div>
+      </div>
+
+    </aside><!-- /sidebar -->
+
+    <!-- ── MAIN PANEL ─────────────────────────────────────────────────── -->
+    <main class="main-panel">
+
+      <!-- ── Always-visible: stat cards ──────────────────────────────── -->
+      <div class="main-top-strip">
+        <div class="idle-cards">
+          <div class="stat-card">
+            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="card-total-images">—</div>
+              <div class="stat-label">Tổng ảnh</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="card-segments">—</div>
+              <div class="stat-label">Phân đoạn</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="card-duration">—</div>
+              <div class="stat-label">Tổng thời lượng</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="card-size">—</div>
+              <div class="stat-label">Ước tính</div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /main-top-strip -->
+
+      <!-- ─── STATE: IDLE ─────────────────────────────────────────── -->
+      <div class="panel-state active" id="state-idle">
+        <!-- Heatmap (full width — clock moved to footer) -->
+        <div class="heatmap-widget heatmap-full">
+          <div class="widget-title">
+            Giờ vàng YouTube (EST)
+            <span class="heatmap-legend">
+              <span class="hm-dot hm-0"></span>Thấp
+              <span class="hm-dot hm-4"></span>Cao
+            </span>
+          </div>
+          <div class="heatmap-wrap">
+            <div class="heatmap-row-labels">
+              <span>T2</span><span>T3</span><span>T4</span>
+              <span>T5</span><span>T6</span><span>T7</span><span>CN</span>
+            </div>
+            <div class="heatmap-grid" id="heatmap-grid"><!-- filled by script --></div>
+            <div class="heatmap-col-labels" id="heatmap-col-labels"><!-- filled by script --></div>
+          </div>
+        </div>
+      </div><!-- /state-idle -->
+
+      <!-- ─── STATE: RENDERING ────────────────────────────────────── -->
+      <div class="panel-state" id="state-rendering">
+
+        <div class="render-header">
+          <div class="phase-badge" id="phase-badge">Chuẩn bị…</div>
+          <div class="render-meta">
+            <span class="render-project-name" id="render-project-name">—</span>
+            <span class="render-sep">·</span>
+            <span id="render-segments-label">0 / 0 phân đoạn</span>
+          </div>
+        </div>
+
+        <div class="render-progress-wrap">
+          <div class="progress-labels">
+            <span class="progress-phase-label" id="progress-phase-label">Đang render…</span>
+            <span class="progress-pct" id="progress-pct">0%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div class="render-timers">
+          <div class="timer-item">
+            <span class="timer-label">Đã qua</span>
+            <span class="timer-val" id="render-elapsed">00:00</span>
+          </div>
+          <div class="timer-item">
+            <span class="timer-label">Còn lại</span>
+            <span class="timer-val" id="render-eta">--:--</span>
+          </div>
+          <div class="timer-item">
+            <span class="timer-label">Phân đoạn</span>
+            <span class="timer-val">
+              <span id="render-seg-done">0</span> / <span id="render-seg-total">0</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="log-panel">
+          <div class="log-toolbar">
+            <span class="log-title">Nhật ký</span>
+            <div class="log-actions">
+              <div class="btn-xs" onclick="App.clearLog()">Xóa</div>
+              <div class="btn-xs" id="btn-autoscroll" onclick="App.toggleAutoscroll()" title="Tự động cuộn nhật ký xuống cuối">Auto ↓</div>
+            </div>
+          </div>
+          <div class="log-body" id="log-body"><!-- log lines injected by app.js --></div>
+        </div>
+
+        <div class="render-controls">
+          <div class="btn-control btn-pause" id="btn-pause" onclick="App.pauseRender()">
+            <svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            Tạm dừng
+          </div>
+          <div class="btn-control btn-resume hidden" id="btn-resume" onclick="App.resumeRender()">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Tiếp tục
+          </div>
+          <div class="btn-control btn-cancel" id="btn-cancel" onclick="App.cancelRender()">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            Hủy render
+          </div>
+        </div>
+
+      </div><!-- /state-rendering -->
+
+      <!-- ─── STATE: COMPLETED ─────────────────────────────────────── -->
+      <div class="panel-state" id="state-complete">
+
+        <div class="success-banner">
+          <div class="success-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          </div>
+          <div class="success-text">
+            <div class="success-title">Render hoàn tất!</div>
+            <div class="success-sub" id="success-sub">Video đã được xuất thành công.</div>
+          </div>
+        </div>
+
+        <div class="output-cards">
+          <div class="output-card">
+            <span class="out-label">Thời lượng</span>
+            <span class="out-val" id="out-duration">—</span>
+          </div>
+          <div class="output-card">
+            <span class="out-label">Dung lượng</span>
+            <span class="out-val" id="out-size">—</span>
+          </div>
+          <div class="output-card">
+            <span class="out-label">Phân đoạn</span>
+            <span class="out-val" id="out-segments">—</span>
+          </div>
+          <div class="output-card">
+            <span class="out-label">Thời gian render</span>
+            <span class="out-val" id="out-render-time">—</span>
+          </div>
+        </div>
+
+        <div class="output-path-row">
+          <span class="path-label">Đường dẫn:</span>
+          <span class="path-val" id="out-path">—</span>
+          <div class="btn-icon-sm" onclick="App.copyOutputPath()" title="Sao chép đường dẫn">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </div>
+        </div>
+
+        <div class="complete-actions">
+          <div class="btn-action btn-action-primary" onclick="App.openOutputFolder()">
+            <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            Mở thư mục
+          </div>
+          <div class="btn-action" onclick="App.newRender()">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Render mới
+          </div>
+          <div class="btn-action" onclick="switchSideTab('history')">
+            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+            Lịch sử
+          </div>
+        </div>
+
+      </div><!-- /state-complete -->
+
+      <!-- ── Sys-bar overlay (right-bottom) ───────────────────── -->
+      <div class="sys-bar">
+        <span class="sys-bar-item">CPU <strong id="sys-cpu">—</strong></span>
+        <span class="sys-bar-dot">·</span>
+        <span class="sys-bar-item">RAM <strong id="sys-ram">—</strong></span>
+        <span class="sys-bar-dot">·</span>
+        <span class="sys-bar-item">Disk <strong id="sys-disk">—</strong></span>
+        <span class="sys-bar-dot">·</span>
+        <span class="sys-bar-item">🎬 <strong id="sys-encoder">—</strong></span>
+      </div>
+
+    </main><!-- /main-panel -->
+
+  </div><!-- /app-body -->
+
+  <!-- ── FOOTER ───────────────────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-pill" id="status-ffmpeg">
+        <span class="status-dot checking" id="dot-ffmpeg"></span>
+        <span id="label-ffmpeg">FFmpeg…</span>
+      </div>
+      <div class="status-pill" id="status-gpu">
+        <span class="status-dot checking" id="dot-gpu"></span>
+        <span id="label-gpu">GPU…</span>
+      </div>
+      <div class="status-pill">
+        <span class="status-dot ok"></span>
+        <span id="label-python">Python…</span>
+      </div>
+    </div>
+    <div class="footer-center">
+      <span class="footer-copy">© 2026 &nbsp;·&nbsp; <strong>Mr•D</strong> &nbsp;·&nbsp; duongnt1506@gmail.com</span>
+    </div>
+    <div class="footer-right">
+      <div class="footer-clocks">
+        <div class="fclock">
+          <img class="fclock-flag" src="https://flagcdn.com/24x18/us.png" alt="US" title="United States">
+          <span class="fclock-time" id="clock-la">--:--:--</span>
+          <span class="fclock-city">Los Angeles</span>
+        </div>
+        <div class="fclock">
+          <img class="fclock-flag" src="https://flagcdn.com/24x18/gb.png" alt="GB" title="United Kingdom">
+          <span class="fclock-time" id="clock-london">--:--:--</span>
+          <span class="fclock-city">London</span>
+        </div>
+        <div class="fclock">
+          <img class="fclock-flag" src="https://flagcdn.com/24x18/au.png" alt="AU" title="Australia">
+          <span class="fclock-time" id="clock-sydney">--:--:--</span>
+          <span class="fclock-city">Sydney</span>
+        </div>
+        <div class="fclock">
+          <img class="fclock-flag" src="https://flagcdn.com/24x18/ca.png" alt="CA" title="Canada">
+          <span class="fclock-time" id="clock-toronto">--:--:--</span>
+          <span class="fclock-city">Toronto</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- /app -->
+
+<!-- ── Folder Browser Modal ───────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="folder-modal-backdrop"
+     onclick="App.closeFolderModal()">
+  <div class="modal" id="folder-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">Chọn thư mục</span>
+      <div class="btn-icon" onclick="App.closeFolderModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </div>
+    </div>
+    <div class="modal-breadcrumb" id="modal-breadcrumb">—</div>
+    <div class="modal-body">
+      <div class="folder-list" id="folder-list"><!-- populated by app.js --></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-current-path" id="modal-current-path">—</span>
+      <div class="modal-actions">
+        <div class="btn-sm btn-secondary" onclick="App.closeFolderModal()">Hủy</div>
+        <div class="btn-sm" onclick="App.selectCurrentFolder()">Chọn thư mục này</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── File Browser Modal (intro/outro) ──────────────────────────────── -->
+<div class="modal-backdrop hidden" id="file-modal-backdrop" onclick="App.closeFileModal()">
+  <div class="modal" id="file-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title" id="file-modal-title">Chọn file video</span>
+      <div class="btn-icon" onclick="App.closeFileModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </div>
+    </div>
+    <div class="modal-breadcrumb" id="file-modal-breadcrumb">—</div>
+    <div class="modal-body">
+      <div class="folder-list" id="file-list"><!-- populated by app.js --></div>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-current-path" id="file-selected-path" style="color:var(--accent-light);font-size:.75rem">Chưa chọn file</span>
+      <div class="modal-actions">
+        <div class="btn-sm btn-secondary" onclick="App.closeFileModal()">Hủy</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Project List Modal ─────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="project-modal-backdrop"
+     onclick="App.closeProjectModal()">
+  <div class="modal" id="project-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">Danh sách dự án</span>
+      <div class="btn-icon" onclick="App.closeProjectModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="project-list" id="project-list"><!-- populated by app.js --></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast container ────────────────────────────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ── Socket.IO ──────────────────────────────────────────────────────── -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<!-- ── Inline bootstrap ───────────────────────────────────────────────── -->
+<script>
+// ── Splash ──────────────────────────────────────────────────────────────
+(function () {
+  var STEPS = [
+    { id: 'splash-step-0', pct: 25,  ms: 0 },
+    { id: 'splash-step-1', pct: 50,  ms: 600 },
+    { id: 'splash-step-2', pct: 75,  ms: 1200 },
+    { id: 'splash-step-3', pct: 100, ms: 1800 },
+  ];
+  var fill = document.getElementById('splash-fill');
+  STEPS.forEach(function (s) {
+    setTimeout(function () {
+      fill.style.width = s.pct + '%';
+      document.querySelectorAll('.splash-step').forEach(function (el) { el.classList.add('hidden'); });
+      var el = document.getElementById(s.id);
+      if (el) el.classList.remove('hidden');
+    }, s.ms);
+  });
+
+  window.revealApp = function () {
+    var splash = document.getElementById('splash');
+    var appEl  = document.getElementById('app');
+    splash.classList.add('fade-out');
+    setTimeout(function () {
+      splash.style.display = 'none';
+      appEl.classList.remove('hidden');
+      appEl.classList.add('fade-in');
+    }, 500);
+  };
+
+  // Fallback reveal if app.js hasn't called revealApp after 4s
+  setTimeout(function () {
+    if (!document.getElementById('app').classList.contains('fade-in')) {
+      window.revealApp();
+    }
+  }, 4000);
+})();
+
+// ── Tab switching ────────────────────────────────────────────────────────
+function switchSideTab(tab) {
+  document.querySelectorAll('.sidebar-tab').forEach(function (el) { el.classList.remove('active'); });
+  document.querySelectorAll('.tab-pane').forEach(function (el) { el.classList.remove('active'); });
+  var btn  = document.getElementById('stab-' + tab);
+  var pane = document.getElementById('tab-' + tab);
+  if (btn)  btn.classList.add('active');
+  if (pane) pane.classList.add('active');
+  if (tab === 'history' && window.App && App.loadHistory) App.loadHistory();
+}
+
+// ── Theme toggle ─────────────────────────────────────────────────────────
+function toggleTheme() {
+  var light = document.body.classList.toggle('light');
+  document.querySelector('.icon-dark').classList.toggle('hidden', light);
+  document.querySelector('.icon-light').classList.toggle('hidden', !light);
+  try { localStorage.setItem('manga_theme', light ? 'light' : 'dark'); } catch (_) {}
+}
+try {
+  if (localStorage.getItem('manga_theme') === 'light') {
+    document.body.classList.add('light');
+    document.querySelector('.icon-dark').classList.add('hidden');
+    document.querySelector('.icon-light').classList.remove('hidden');
+  }
+} catch (_) {}
+
+// ── 4-city clock ─────────────────────────────────────────────────────────
+var _ZONES = [
+  { id: 'clock-la',      tz: 'America/Los_Angeles' },
+  { id: 'clock-london',  tz: 'Europe/London' },
+  { id: 'clock-sydney',  tz: 'Australia/Sydney' },
+  { id: 'clock-toronto', tz: 'America/Toronto' },
+];
+var _fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+function _updateClocks() {
+  var now = new Date();
+  _ZONES.forEach(function (z) {
+    var el = document.getElementById(z.id);
+    if (!el) return;
+    try {
+      el.textContent = new Intl.DateTimeFormat('en-GB', {
+        timeZone: z.tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).format(now);
+    } catch (_) {}
+  });
+}
+_updateClocks();
+setInterval(_updateClocks, 1000);
+
+// ── YouTube EST heatmap ───────────────────────────────────────────────────
+(function () {
+  // rows = Mon–Sun, cols = 0–23 EST; values 0–4 (none→peak)
+  var DATA = [
+    [0,0,0,0,0,1,1,2,2,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0], // Mon
+    [0,0,0,0,0,1,1,2,2,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0], // Tue
+    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0], // Wed
+    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0], // Thu
+    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,4,4,4,4,4,4,3,2,1], // Fri
+    [0,0,0,1,1,1,2,2,3,3,3,4,4,4,4,4,4,4,4,4,3,3,2,1], // Sat
+    [0,0,0,1,1,1,2,2,3,3,3,3,4,4,4,4,4,4,3,3,3,2,1,0], // Sun
+  ];
+  var TIPS = ['Không có', 'Thấp', 'Trung bình', 'Cao', 'Đỉnh cao'];
+  var grid = document.getElementById('heatmap-grid');
+  var cols = document.getElementById('heatmap-col-labels');
+  if (!grid) return;
+
+  var frag = document.createDocumentFragment();
+  DATA.forEach(function (row) {
+    row.forEach(function (v) {
+      var cell = document.createElement('div');
+      cell.className = 'heatmap-cell hm-' + v;
+      cell.title = TIPS[v];
+      frag.appendChild(cell);
+    });
+  });
+  grid.appendChild(frag);
+
+  if (cols) {
+    var lfrag = document.createDocumentFragment();
+    for (var h = 0; h < 24; h++) {
+      var lbl = document.createElement('span');
+      lbl.textContent = (h % 6 === 0) ? h + 'h' : '';
+      lfrag.appendChild(lbl);
+    }
+    cols.appendChild(lfrag);
+  }
+})();
+</script>
+
+<!-- ── App business logic ─────────────────────────────────────────────── -->
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>

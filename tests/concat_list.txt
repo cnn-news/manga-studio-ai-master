@@ -1,0 +1,3 @@
+file 'D:/My Projects/python_tools/Manga Studio AI Master/seg1.mp4'
+file 'D:/My Projects/python_tools/Manga Studio AI Master/seg2.mp4'
+file 'D:/My Projects/python_tools/Manga Studio AI Master/seg3.mp4'

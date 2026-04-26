@@ -1,0 +1,87 @@
+=== Manga Studio AI — render session 20260426_184218 ===
+Job: N/A
+────────────────────────────────────────────────
+[18:42:18] [INFO   ] Pipeline started — project: Roku's House of Oddities - Chapter_002, hw_encoder: nvenc
+[18:42:18] [INFO   ] Phase 0: Validating inputs…
+[18:42:18] [INFO   ] Found 25 matched pairs
+[18:42:18] [INFO   ] Prepared 25 segments, total=574.3s, est=631.7MB
+[18:42:18] [INFO   ] Rendering 25 segments with 8 parallel worker(s)
+[18:42:18] [INFO   ]   [1/25] 001.png effect=pan_diagonal
+[18:42:18] [INFO   ]   [3/25] 003.png effect=pan_diagonal
+[18:42:18] [INFO   ]   [2/25] 002.png effect=pan_vertical
+[18:42:18] [INFO   ]   [4/25] 004.png effect=pan_diagonal
+[18:42:18] [INFO   ]   [5/25] 005.png effect=tilt_wave
+[18:42:18] [INFO   ]   [7/25] 007.png effect=tilt_wave
+[18:42:18] [INFO   ]   [6/25] 006.png effect=tilt_wave
+[18:42:18] [INFO   ]   [8/25] 008.png effect=zoom_pulse
+[18:44:18] [INFO   ]   [7/25] done (24.1s)
+[18:44:18] [INFO   ]   [9/25] 009.png effect=pan_diagonal
+[18:44:23] [INFO   ]   [6/25] done (24.8s)
+[18:44:23] [INFO   ]   [10/25] 010.png effect=pan_vertical
+[18:44:23] [INFO   ]   [3/25] done (25.8s)
+[18:44:23] [INFO   ]   [11/25] 011.png effect=pan_vertical
+[18:44:26] [INFO   ]   [4/25] done (25.8s)
+[18:44:26] [INFO   ]   [12/25] 012.png effect=tilt_wave
+[18:44:28] [INFO   ]   [2/25] done (26.8s)
+[18:44:28] [INFO   ]   [13/25] 013.png effect=pan_diagonal
+[18:44:30] [INFO   ]   [5/25] done (25.2s)
+[18:44:30] [INFO   ]   [14/25] 014.png effect=zoom_pulse
+[18:44:32] [INFO   ]   [8/25] done (26.2s)
+[18:44:32] [INFO   ]   [15/25] 015.png effect=pan_horizontal
+[18:44:50] [INFO   ]   [1/25] done (28.9s)
+[18:44:50] [INFO   ]   [16/25] 016.png effect=pan_diagonal
+[18:46:04] [INFO   ]   [9/25] done (24.0s)
+[18:46:04] [INFO   ]   [17/25] 017.png effect=zoom_pulse
+[18:46:08] [INFO   ]   [15/25] done (21.6s)
+[18:46:08] [INFO   ]   [18/25] 018.png effect=pan_vertical
+[18:46:09] [INFO   ]   [11/25] done (23.8s)
+[18:46:09] [INFO   ]   [19/25] 019.png effect=pan_horizontal
+[18:46:13] [INFO   ]   [10/25] done (24.0s)
+[18:46:13] [INFO   ]   [20/25] 020.png effect=pan_horizontal
+[18:46:14] [INFO   ]   [14/25] done (21.4s)
+[18:46:14] [INFO   ]   [21/25] 021.png effect=pan_horizontal
+[18:46:20] [INFO   ]   [16/25] done (21.5s)
+[18:46:20] [INFO   ]   [22/25] 022.png effect=pan_horizontal
+[18:46:22] [INFO   ]   [13/25] done (22.9s)
+[18:46:22] [INFO   ]   [23/25] 023.png effect=pan_vertical
+[18:46:29] [INFO   ]   [12/25] done (24.4s)
+[18:46:29] [INFO   ]   [24/25] 024.png effect=zoom_pulse
+[18:47:36] [INFO   ]   [19/25] done (20.3s)
+[18:47:36] [INFO   ]   [25/25] 025.png effect=pan_vertical
+[18:47:37] [INFO   ]   [17/25] done (20.7s)
+[18:47:37] [INFO   ]   [21/25] done (18.9s)
+[18:47:37] [INFO   ]   [22/25] done (18.2s)
+[18:47:37] [INFO   ]   [18/25] done (20.6s)
+[18:47:41] [INFO   ]   [23/25] done (19.1s)
+[18:47:41] [INFO   ]   [20/25] done (20.8s)
+[18:47:46] [INFO   ]   [24/25] done (18.4s)
+[18:48:06] [INFO   ]   [25/25] done (26.0s)
+[18:48:06] [INFO   ] Merging 25 segment(s) → merged.mp4
+[18:48:08] [INFO   ] Merge complete (concat_file)
+[18:48:08] [INFO   ] Finalizing → Roku's House of Oddities - Chapter_002.mp4
+[18:48:08] [INFO   ] Finalize: using NVIDIA NVENC encoder
+[18:48:08] [ERROR  ] Finalize failed: Function not implemented
+[vf#0:0 @ 000001ef4020db00] Task finished with error code: -40 (Function not implemented)
+[vf#0:0 @ 000001ef4020db00] Terminating thread with return code -40 (Function not implemented)
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] [enc:h264_nvenc @ 000001ef3fa179c0] Could not open encoder before EOF
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] Task finished with error code: -22 (Invalid argument)
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] Terminating thread with return code -22 (Invalid argument)
+[out#0/mp4 @ 000001ef4040e440] Nothing was written into output file, because at least one of its streams received no packets.
+frame=    0 fps=0.0 q=0.0 Lsize=       0KiB time=N/A bitrate=N/A speed=N/A elapsed=0:00:00.14    
+[aac @ 000001ef404798c0] Qavg: 65085.953
+Conversion failed!
+
+[18:48:08] [ERROR  ] Pipeline failed: Function not implemented
+[vf#0:0 @ 000001ef4020db00] Task finished with error code: -40 (Function not implemented)
+[vf#0:0 @ 000001ef4020db00] Terminating thread with return code -40 (Function not implemented)
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] [enc:h264_nvenc @ 000001ef3fa179c0] Could not open encoder before EOF
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] Task finished with error code: -22 (Invalid argument)
+[vost#0:0/h264_nvenc @ 000001ef4006cc00] Terminating thread with return code -22 (Invalid argument)
+[out#0/mp4 @ 000001ef4040e440] Nothing was written into output file, because at least one of its streams received no packets.
+frame=    0 fps=0.0 q=0.0 Lsize=       0KiB time=N/A bitrate=N/A speed=N/A elapsed=0:00:00.14    
+[aac @ 000001ef404798c0] Qavg: 65085.953
+Conversion failed!
+
+[18:48:08] [INFO   ] Cleaned temp: D:/_temp_f817a4aa
+────────────────────────────────────────────────
+=== Session ended ===

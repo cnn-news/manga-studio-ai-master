@@ -1,0 +1,11 @@
+=== Manga Studio AI — render session 20260425_224316 ===
+Job: N/A
+────────────────────────────────────────────────
+[22:43:16] [INFO   ] Pipeline started — project: Roku's House of Oddities - Chapter_002, hw_encoder: nvenc
+[22:43:16] [INFO   ] Phase 0: Validating inputs…
+[22:43:16] [INFO   ] Found 25 matched pairs
+[22:43:16] [INFO   ] Prepared 25 segments, total=574.3s, est=631.7MB
+[22:43:16] [INFO   ] Rendering 25 segments with 6 worker(s)
+[22:43:16] [INFO   ]   [1/25] 001.png effect=pan_diagonal
+[22:43:16] [INFO   ]   [2/25] 002.png effect=pan_horizontal
+[22:43:16] [INFO   ]   [3/25] 003.png effect=zoom_pulse
