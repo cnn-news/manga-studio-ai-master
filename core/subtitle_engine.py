@@ -5,46 +5,49 @@ from config import DEFAULT_VIDEO_CODEC
 
 # ── presets ───────────────────────────────────────────────────────────────────
 
+# fontsize calibrated for FFmpeg SRT→ASS default PlayResY=288
+# (scale: fontsize / 288 * video_height = rendered pixel height)
+# Target ~50-65px at 1080p → fontsize ≈ 13–18
 SUBTITLE_PRESETS = {
     "youtube_classic": {
-        "fontsize": 24, "fontcolor": "white", "bg_color": "black@0.5",
-        "borderw": 2, "shadow": 0, "position": "bottom",
-        "fontname": "Arial",
+        "fontsize": 14, "fontcolor": "white",   "bg_color": "black@0.72",
+        "borderw": 0, "shadow": 0, "bold": False, "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "netflix_style": {
-        "fontsize": 32, "fontcolor": "white", "bg_color": "none",
-        "borderw": 4, "shadow": 0, "position": "bottom",
-        "fontname": "Arial Bold",
+        "fontsize": 16, "fontcolor": "white",   "bg_color": "none",
+        "borderw": 3, "shadow": 1, "bold": True,  "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "minimal": {
-        "fontsize": 20, "fontcolor": "white", "bg_color": "none",
-        "borderw": 1, "shadow": 1, "position": "bottom",
-        "fontname": "Arial",
+        "fontsize": 13, "fontcolor": "#eeeeee", "bg_color": "none",
+        "borderw": 1, "shadow": 0, "bold": False, "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "social_media": {
-        "fontsize": 40, "fontcolor": "yellow", "bg_color": "none",
-        "borderw": 3, "shadow": 2, "position": "center",
-        "fontname": "Arial Bold",
+        "fontsize": 17, "fontcolor": "#FFE500", "bg_color": "none",
+        "borderw": 2, "shadow": 2, "bold": True,  "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "karaoke": {
-        "fontsize": 36, "fontcolor": "yellow", "bg_color": "black@0.6",
-        "borderw": 2, "shadow": 0, "position": "bottom",
-        "fontname": "Arial Bold",
+        "fontsize": 16, "fontcolor": "#FFE500", "bg_color": "black@0.75",
+        "borderw": 0, "shadow": 0, "bold": True,  "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "anime": {
-        "fontsize": 44, "fontcolor": "white", "bg_color": "none",
-        "borderw": 8, "shadow": 0, "position": "bottom",
-        "fontname": "Arial Black",
+        "fontsize": 18, "fontcolor": "white",   "bg_color": "none",
+        "borderw": 6, "shadow": 0, "bold": True,  "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "cinematic": {
-        "fontsize": 28, "fontcolor": "white", "bg_color": "black@0.45",
-        "borderw": 0, "shadow": 0, "position": "top",
-        "fontname": "Georgia",
+        "fontsize": 13, "fontcolor": "#f5f5dc", "bg_color": "black@0.45",
+        "borderw": 0, "shadow": 0, "bold": False, "italic": True,
+        "position": "bottom", "margin_v": 20, "fontname": "Georgia",
     },
     "pop": {
-        "fontsize": 38, "fontcolor": "white", "bg_color": "none",
-        "borderw": 5, "shadow": 3, "position": "center",
-        "fontname": "Arial Bold",
+        "fontsize": 17, "fontcolor": "#FF6B9D", "bg_color": "none",
+        "borderw": 3, "shadow": 2, "bold": True,  "italic": False,
+        "position": "bottom", "margin_v": 20, "fontname": "Arial",
     },
     "none": None,
 }
@@ -64,23 +67,38 @@ _COLOR_RGB: dict[str, tuple[int, int, int]] = {
 
 
 def _color_to_ass(color_str: str) -> str:
-    """Convert 'colorname' or 'colorname@opacity' to ASS &HAABBGGRR hex.
+    """Convert color string to ASS &HAABBGGRR hex.
 
-    ASS channel order is AABBGGRR where AA=00 means fully opaque.
-    opacity 1.0 = fully visible → alpha 0x00; 0.0 = invisible → alpha 0xFF.
+    Accepts:
+      - Named colors: 'white', 'yellow', etc.
+      - Hex colors:   '#RRGGBB'
+      - With opacity: 'white@0.7' or '#FF6B9D@0.8'
+    ASS channel order is AABBGGRR; AA=00 = fully opaque.
     """
     alpha = 0
-    name = color_str.strip().lower()
+    raw = color_str.strip()
 
-    if "@" in name:
-        name, alpha_str = name.split("@", 1)
+    if "@" in raw:
+        raw, alpha_str = raw.rsplit("@", 1)
         try:
             opacity = float(alpha_str)
             alpha = max(0, min(255, int((1.0 - opacity) * 255)))
         except ValueError:
             pass
 
-    r, g, b = _COLOR_RGB.get(name.strip(), (255, 255, 255))
+    raw = raw.strip()
+
+    # Hex color #RRGGBB
+    if raw.startswith("#") and len(raw) == 7:
+        try:
+            r = int(raw[1:3], 16)
+            g = int(raw[3:5], 16)
+            b = int(raw[5:7], 16)
+            return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
+        except ValueError:
+            pass
+
+    r, g, b = _COLOR_RGB.get(raw.lower(), (255, 255, 255))
     return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
 
 
@@ -171,51 +189,58 @@ class SubtitleEngine:
     ) -> str:
         """Return an FFmpeg subtitles filter string with force_style applied.
 
-        Settings are resolved in order: preset defaults → custom overrides.
-        Position 'bottom' → Alignment=2, MarginV=80.
-        Position 'center' → Alignment=5 (middle-center), MarginV=0.
-        preset 'none' returns an empty string (no subtitles).
+        All presets default to Alignment=2 (center-bottom).
+        MarginV is in ASS units relative to PlayResY=288 (FFmpeg SRT default).
+        At 1080p: MarginV=20 ≈ 75px from bottom edge.
         """
         base = SUBTITLE_PRESETS.get(preset)
-        if base is None:  # covers preset "none" and unknown keys
+        if base is None:
             return ""
 
         settings = dict(base)
         if custom:
             settings.update(custom)
 
-        fontsize   = settings.get("fontsize", 24)
-        fontcolor  = settings.get("fontcolor", "white")
-        bg_color   = settings.get("bg_color", "none")
-        borderw    = settings.get("borderw", 2)
-        shadow     = settings.get("shadow", 0)
-        position   = settings.get("position", "bottom")
-        fontname   = settings.get("fontname", "Arial")
+        fontsize  = settings.get("fontsize", 14)
+        fontcolor = settings.get("fontcolor", "white")
+        bg_color  = settings.get("bg_color", "none")
+        borderw   = settings.get("borderw", 1)
+        shadow    = settings.get("shadow", 0)
+        position  = settings.get("position", "bottom")
+        fontname  = settings.get("fontname", "Arial")
+        bold      = 1 if settings.get("bold", False) else 0
+        italic    = 1 if settings.get("italic", False) else 0
+        margin_v  = settings.get("margin_v", 20)
 
-        primary    = _color_to_ass(fontcolor)
-        outline_c  = _color_to_ass("black")
+        primary   = _color_to_ass(fontcolor)
+        outline_c = _color_to_ass("black")
 
-        if position == "center":
-            alignment, margin_v = 5, 0
+        # Alignment: 2 = center-bottom (default), 5 = center-middle, 8 = center-top
+        if position == "top":
+            alignment, mv = 8, margin_v
         else:
-            alignment, margin_v = 2, 80
+            # All other positions → center-bottom
+            alignment, mv = 2, margin_v
 
         if bg_color and bg_color != "none":
             back_color   = _color_to_ass(bg_color)
-            border_style = 4   # filled box background
+            border_style = 4          # opaque box behind text
             style_extra  = f",BackColour={back_color},BorderStyle={border_style}"
         else:
-            style_extra  = ",BorderStyle=1"  # outline + shadow, no box
+            border_style = 1          # outline-only
+            style_extra  = f",BorderStyle={border_style}"
 
         force_style = (
             f"FontName={fontname},"
             f"FontSize={fontsize},"
+            f"Bold={bold},"
+            f"Italic={italic},"
             f"PrimaryColour={primary},"
             f"OutlineColour={outline_c},"
             f"Outline={borderw},"
             f"Shadow={shadow},"
             f"Alignment={alignment},"
-            f"MarginV={margin_v}"
+            f"MarginV={mv}"
             + style_extra
         )
 

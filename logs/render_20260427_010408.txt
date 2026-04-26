@@ -1,0 +1,68 @@
+=== Manga Studio AI — render session 20260427_010408 ===
+Job: N/A
+────────────────────────────────────────────────
+[01:04:08] [INFO   ] Pipeline started — project: Roku's House of Oddities - Chapter_002, hw_encoder: nvenc
+[01:04:08] [INFO   ] Phase 0: Validating inputs…
+[01:04:08] [INFO   ] Found 25 matched pairs
+[01:04:08] [INFO   ] Prepared 25 segments, total=574.3s, est=631.7MB
+[01:04:08] [INFO   ] Rendering 25 segments with 8 parallel worker(s)
+[01:04:08] [INFO   ]   [1/25] 001.png effect=zoom_pulse
+[01:04:08] [INFO   ]   [2/25] 002.png effect=tilt_wave
+[01:04:08] [INFO   ]   [3/25] 003.png effect=tilt_wave
+[01:04:08] [INFO   ]   [4/25] 004.png effect=tilt_wave
+[01:04:08] [INFO   ]   [6/25] 006.png effect=pan_diagonal
+[01:04:08] [INFO   ]   [5/25] 005.png effect=pan_horizontal
+[01:04:08] [INFO   ]   [8/25] 008.png effect=zoom_pulse
+[01:04:08] [INFO   ]   [7/25] 007.png effect=pan_horizontal
+[01:06:09] [INFO   ]   [7/25] done (24.1s)
+[01:06:09] [INFO   ]   [9/25] 009.png effect=tilt_wave
+[01:06:09] [INFO   ]   [5/25] done (25.2s)
+[01:06:09] [INFO   ]   [10/25] 010.png effect=pan_diagonal
+[01:06:13] [INFO   ]   [6/25] done (24.8s)
+[01:06:13] [INFO   ]   [11/25] 011.png effect=pan_horizontal
+[01:06:22] [INFO   ]   [3/25] done (25.8s)
+[01:06:22] [INFO   ]   [12/25] 012.png effect=pan_horizontal
+[01:06:27] [INFO   ]   [8/25] done (26.2s)
+[01:06:27] [INFO   ]   [13/25] 013.png effect=zoom_pulse
+[01:06:30] [INFO   ]   [4/25] done (25.8s)
+[01:06:30] [INFO   ]   [14/25] 014.png effect=pan_horizontal
+[01:06:36] [INFO   ]   [2/25] done (26.8s)
+[01:06:36] [INFO   ]   [15/25] 015.png effect=pan_diagonal
+[01:06:42] [INFO   ]   [1/25] done (28.9s)
+[01:06:42] [INFO   ]   [16/25] 016.png effect=pan_diagonal
+[01:07:55] [INFO   ]   [10/25] done (24.0s)
+[01:07:55] [INFO   ]   [17/25] 017.png effect=tilt_wave
+[01:07:55] [INFO   ]   [9/25] done (24.0s)
+[01:07:55] [INFO   ]   [18/25] 018.png effect=tilt_wave
+[01:07:57] [INFO   ]   [11/25] done (23.8s)
+[01:07:57] [INFO   ]   [19/25] 019.png effect=tilt_wave
+[01:08:03] [INFO   ]   [14/25] done (21.4s)
+[01:08:03] [INFO   ]   [20/25] 020.png effect=pan_horizontal
+[01:08:11] [INFO   ]   [15/25] done (21.6s)
+[01:08:11] [INFO   ]   [21/25] 021.png effect=zoom_pulse
+[01:08:14] [INFO   ]   [16/25] done (21.5s)
+[01:08:14] [INFO   ]   [22/25] 022.png effect=tilt_wave
+[01:08:16] [INFO   ]   [13/25] done (22.9s)
+[01:08:16] [INFO   ]   [23/25] 023.png effect=pan_vertical
+[01:08:19] [INFO   ]   [12/25] done (24.4s)
+[01:08:19] [INFO   ]   [24/25] 024.png effect=pan_vertical
+[01:09:28] [INFO   ]   [18/25] done (20.6s)
+[01:09:28] [INFO   ]   [25/25] 025.png effect=pan_diagonal
+[01:09:30] [INFO   ]   [17/25] done (20.7s)
+[01:09:32] [INFO   ]   [19/25] done (20.3s)
+[01:09:33] [INFO   ]   [20/25] done (20.8s)
+[01:09:35] [INFO   ]   [23/25] done (19.1s)
+[01:09:35] [INFO   ]   [22/25] done (18.2s)
+[01:09:35] [INFO   ]   [21/25] done (18.9s)
+[01:09:37] [INFO   ]   [24/25] done (18.4s)
+[01:10:01] [INFO   ]   [25/25] done (26.0s)
+[01:10:01] [INFO   ] Merging 25 segment(s) → merged.mp4
+[01:10:02] [INFO   ] Merge complete (concat_file)
+[01:10:02] [INFO   ] Burning subtitles (preset=karaoke)…
+[01:14:13] [INFO   ] Finalizing → Roku's House of Oddities - Chapter_002.mp4
+[01:14:13] [INFO   ] Finalize: using libx264 (software)
+[01:18:37] [INFO   ] Final output: 326.75 MB, 575.3s, encoded in 263.94s
+[01:18:37] [INFO   ] Cleaned temp: D:/_temp_d006f926
+[01:18:37] [INFO   ] Pipeline complete → D:/Roku's House of Oddities - Chapter_002.mp4
+────────────────────────────────────────────────
+=== Session ended ===

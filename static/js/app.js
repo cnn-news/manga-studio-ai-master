@@ -1,4 +1,4 @@
-/* app.js — Manga Studio AI main logic
+﻿/* app.js — Manga Studio AI main logic
    Implements window.App which index.html calls directly.
    Inline scripts in index.html handle: clock, heatmap, theme, splash reveal.
 */
@@ -595,7 +595,10 @@ function onComplete(result) {
     setText('out-duration',    fmtDur(r.duration));
     setText('out-size',        r.file_size_mb ? r.file_size_mb + ' MB' : '—');
     setText('out-segments',    r.segment_count ?? '—');
-    setText('out-render-time', r.render_time   ? r.render_time + 's' : '—');
+    if (r.render_time) {
+        const _rt = Math.round(r.render_time);
+        setText('out-render-time', String(Math.floor(_rt / 60)).padStart(2, '0') + ':' + String(_rt % 60).padStart(2, '0'));
+    } else { setText('out-render-time', '—'); }
     setText('out-path',        r.output_path   || '—');
     setText('success-sub',     r.output_path   ? 'Đã lưu: ' + r.output_path : 'Video đã sẵn sàng.');
 
@@ -751,8 +754,11 @@ const App = {
         const activeTrans   = document.querySelector('.fx-btn.active[data-transition]');
         const transOptions  = ['fade_black','fade_white','cross_dissolve','slide_left','slide_right','zoom_transition'];
         // Subtitle
-        const subEnabled    = $('subtitle-enabled')?.checked ?? false;
+        const subEnabled     = $('subtitle-enabled')?.checked ?? false;
         const activeSubStyle = document.querySelector('.sub-style-btn.active');
+        const subSource      = document.querySelector('.sub-source-btn.active')?.dataset.source || 'auto';
+        const subLanguage    = $('sub-language')?.value || 'auto';
+        let   srtPath        = $('srt-path')?.value?.trim() || '';
 
         const cfg = {
             image_folder:       $('image-folder')?.value  || '',
@@ -769,10 +775,11 @@ const App = {
                                     ? transOptions[Math.floor(Math.random() * transOptions.length)]
                                     : (activeTrans?.dataset.transition || 'fade_black'),
             transition_duration: parseFloat($('transition-duration')?.value) || 0.5,
-            subtitle_preset:    subEnabled ? (activeSubStyle?.dataset.style || 'youtube_classic') : 'none',
-            subtitle_srt_path:  subEnabled ? ($('srt-path')?.value || null) : null,
+            subtitle_preset:    subEnabled ? (activeSubStyle?.dataset.style || 'karaoke') : 'none',
+            subtitle_srt_path:  null,  // resolved below
             normalize_audio:    $('normalize-audio')?.checked ?? true,
             audio_fade:         parseFloat($('audio-fade-in')?.value) || 0.3,
+            watermark_text:     $('watermark-text')?.value?.trim() || '',
             intro_path:         $('intro-path')?.value     || null,
             outro_path:         $('outro-path')?.value     || null,
             video_bitrate:      $('video-bitrate')?.value  || '8M',
@@ -782,6 +789,25 @@ const App = {
         if (!cfg.image_folder || !cfg.audio_folder || !cfg.output_folder) {
             toast('Vui lòng chọn đủ 3 thư mục trước khi render.', 'warning');
             return;
+        }
+
+        // ── Subtitle resolution ──────────────────────────────────────────
+        if (subEnabled) {
+            if (subSource === 'srt') {
+                if (!srtPath) {
+                    toast('Vui lòng chọn file SRT trước khi render.', 'warning');
+                    return;
+                }
+                cfg.subtitle_srt_path = srtPath;
+            } else {
+                // source = 'auto': generate SRT from audio if not yet done
+                if (!srtPath) {
+                    toast('Đang tạo phụ đề tự động từ audio…', 'info');
+                    srtPath = await this._generateSRTForRender(cfg.audio_folder, cfg.output_folder, subLanguage);
+                    if (!srtPath) return; // error already toasted
+                }
+                cfg.subtitle_srt_path = srtPath;
+            }
         }
 
         try {
@@ -871,8 +897,68 @@ const App = {
 
     newRender() {
         _jobId = null;
+        this.resetSettings();
         showState('idle');
         document.title = 'Manga Studio AI';
+    },
+
+    resetSettings() {
+        const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+        // Folders
+        setVal('image-folder',  '');
+        setVal('audio-folder',  '');
+        setVal('output-folder', 'D:/');
+        setVal('project-name',  '');
+        // Project / export
+        setVal('resolution', '1920x1080');
+        setVal('fps', '60');
+        setVal('quality', 'balanced');
+        // Effect
+        const effRandom = document.getElementById('effect-random');
+        if (effRandom) { effRandom.checked = true; this.toggleEffectRandom(); }
+        setVal('effect-speed', 'normal');
+        document.querySelectorAll('.fx-btn[data-effect]').forEach(b => b.classList.toggle('active', b.dataset.effect === 'zoom_pulse'));
+        // Transition
+        const transRandom = document.getElementById('transition-random');
+        if (transRandom) { transRandom.checked = true; this.toggleTransitionRandom(); }
+        setVal('transition-duration', '0.5');
+        document.querySelectorAll('.fx-btn[data-transition]').forEach(b => b.classList.toggle('active', b.dataset.transition === 'fade_black'));
+        // Subtitle
+        const subEnabled = document.getElementById('subtitle-enabled');
+        if (subEnabled) { subEnabled.checked = false; this.toggleSubtitle(); }
+        document.querySelectorAll('.sub-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === 'karaoke'));
+        setVal('srt-path', '');
+        setVal('sub-language', 'auto');
+        this.toggleSubtitleSource('auto');
+        const genStatus = document.getElementById('sub-gen-status');
+        if (genStatus) genStatus.textContent = '';
+        this.renderSubPreview('karaoke');
+        // Advanced
+        const normAudio = document.getElementById('normalize-audio');
+        if (normAudio) normAudio.checked = true;
+        setVal('audio-fade-in',  '0.5');
+        const fi = document.getElementById('audio-fade-in-val');  if (fi) fi.textContent = '0.5s';
+        setVal('audio-fade-out', '1.0');
+        const fo = document.getElementById('audio-fade-out-val'); if (fo) fo.textContent = '1.0s';
+        setVal('watermark-text', '');
+        setVal('video-bitrate',  '');
+        setVal('audio-bitrate',  '');
+        setVal('intro-path',     '');
+        setVal('outro-path',     '');
+        // Folder messages
+        const imgMsg = document.getElementById('img-folder-msg');
+        if (imgMsg) { imgMsg.innerHTML = ''; imgMsg.className = 'folder-msg'; }
+        const audMsg = document.getElementById('aud-folder-msg');
+        if (audMsg) { audMsg.innerHTML = ''; audMsg.className = 'folder-msg'; }
+        // Stat cards
+        setText('card-total-images', '—');
+        setText('card-segments', '—');
+        setText('card-duration', '—');
+        setText('card-size', '—');
+        // Render button
+        const rbtn = document.getElementById('btn-render');
+        if (rbtn) rbtn.classList.add('disabled');
+        toast('Đã reset tất cả về mặc định.', 'success');
     },
 
     // Log
@@ -987,13 +1073,20 @@ const App = {
                 item.className = 'history-item';
                 const badge = `<span class="history-badge ${r.status || 'failed'}">${r.status || 'failed'}</span>`;
                 item.innerHTML = `
-                    <div class="history-item-name">${r.project_name || '(không tên)'}</div>
-                    <div class="history-item-meta">
-                        ${badge}
-                        <span>${r.total_duration ? fmtDur(r.total_duration) : ''}</span>
-                        <span>${r.file_size_mb ? r.file_size_mb + ' MB' : ''}</span>
-                        <span>${(r.created_at || '').slice(0, 16)}</span>
-                    </div>`;
+                    <div class="history-item-main">
+                      <div class="history-item-name">${r.project_name || '(không tên)'}</div>
+                      <div class="history-item-meta">
+                          ${badge}
+                          <span>${r.total_duration ? fmtDur(r.total_duration) : ''}</span>
+                          <span>${r.file_size_mb ? r.file_size_mb + ' MB' : ''}</span>
+                          <span>${(r.created_at || '').slice(0, 16)}</span>
+                      </div>
+                    </div>
+                    <button class="btn-history-del" title="Xoá bản ghi này" data-id="${r.id}">✕</button>`;
+                item.querySelector('.btn-history-del').addEventListener('click', e => {
+                    e.stopPropagation();
+                    App.deleteHistory(r.id);
+                });
                 list.insertBefore(item, list.firstChild);
             });
         } catch (e) { console.warn('loadHistory:', e.message); }
@@ -1026,7 +1119,7 @@ const App = {
         const on = document.getElementById('subtitle-enabled')?.checked;
         const panel = document.getElementById('subtitle-panel');
         if (panel) panel.style.display = on ? '' : 'none';
-        if (on) this.renderSubPreview(document.querySelector('.sub-style-btn.active')?.dataset.style || 'youtube_classic');
+        if (on) this.renderSubPreview(document.querySelector('.sub-style-btn.active')?.dataset.style || 'karaoke');
     },
 
     toggleSubtitleSource(source) {
@@ -1049,15 +1142,16 @@ const App = {
         const ctx = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
 
+        // Sync with SUBTITLE_PRESETS in subtitle_engine.py — all pos='bottom' (center-bottom)
         const MAP = {
-            youtube_classic: { color: '#fff',     bg: 'rgba(0,0,0,0.72)', size: 13, bold: false, outline: 0, shadow: false, pos: 'bottom' },
-            netflix_style:   { color: '#fff',     bg: null,                size: 15, bold: true,  outline: 3, shadow: true,  pos: 'bottom' },
-            minimal:         { color: '#eeeeee',  bg: null,                size: 11, bold: false, outline: 1, shadow: false, pos: 'bottom' },
-            social_media:    { color: '#FFE500',  bg: null,                size: 15, bold: true,  outline: 2, shadow: true,  pos: 'center' },
-            karaoke:         { color: '#FFE500',  bg: 'rgba(0,0,40,0.75)',size: 13, bold: true,  outline: 1, shadow: false, pos: 'bottom' },
-            anime:           { color: '#ffffff',  bg: null,                size: 17, bold: true,  outline: 5, shadow: false, pos: 'bottom' },
-            cinematic:       { color: '#f5f5dc',  bg: 'rgba(0,0,0,0.45)', size: 11, bold: false, outline: 0, shadow: false, pos: 'top'    },
-            pop:             { color: '#FF6B9D',  bg: null,                size: 15, bold: true,  outline: 3, shadow: true,  pos: 'center' },
+            youtube_classic: { color: '#fff',     bg: 'rgba(0,0,0,0.72)',  size: 11, bold: false, italic: false, outline: 0, shadow: false, pos: 'bottom' },
+            netflix_style:   { color: '#fff',     bg: null,                size: 13, bold: true,  italic: false, outline: 3, shadow: true,  pos: 'bottom' },
+            minimal:         { color: '#eeeeee',  bg: null,                size: 10, bold: false, italic: false, outline: 1, shadow: false, pos: 'bottom' },
+            social_media:    { color: '#FFE500',  bg: null,                size: 13, bold: true,  italic: false, outline: 2, shadow: true,  pos: 'bottom' },
+            karaoke:         { color: '#FFE500',  bg: 'rgba(0,0,30,0.75)', size: 12, bold: true,  italic: false, outline: 0, shadow: false, pos: 'bottom' },
+            anime:           { color: '#ffffff',  bg: null,                size: 14, bold: true,  italic: false, outline: 6, shadow: false, pos: 'bottom' },
+            cinematic:       { color: '#f5f5dc',  bg: 'rgba(0,0,0,0.45)', size: 10, bold: false, italic: true,  outline: 0, shadow: false, pos: 'bottom' },
+            pop:             { color: '#FF6B9D',  bg: null,                size: 13, bold: true,  italic: false, outline: 3, shadow: true,  pos: 'bottom' },
         };
         const s = MAP[style] || MAP.youtube_classic;
         const sample = 'Đây là phụ đề mẫu của bạn ✨';
@@ -1070,24 +1164,26 @@ const App = {
         ctx.fillRect(4, 4, W/2 - 8, H - 8);
         ctx.fillRect(W/2 + 4, 4, W/2 - 8, H - 8);
 
-        ctx.font = `${s.bold ? 'bold ' : ''}${s.size}px Arial,sans-serif`;
+        const fontDecl = [s.italic ? 'italic' : '', s.bold ? 'bold' : '', `${s.size}px`, 'Arial,sans-serif'].filter(Boolean).join(' ');
+        ctx.font = fontDecl;
         const tw = ctx.measureText(sample).width;
-        const tx = Math.max(4, (W - tw) / 2);
-        const ty = s.pos === 'top' ? s.size + 6 : s.pos === 'center' ? H / 2 + s.size / 2 : H - 6;
+        const tx = Math.max(6, (W - tw) / 2);
+        // All positions are center-bottom in the engine; preview matches
+        const ty = s.pos === 'top' ? s.size + 6 : H - 8;
 
         if (s.bg) {
             ctx.fillStyle = s.bg;
-            ctx.fillRect(tx - 7, ty - s.size - 2, Math.min(tw + 14, W - 8), s.size + 8);
+            ctx.fillRect(Math.max(0, tx - 8), ty - s.size - 3, Math.min(tw + 16, W), s.size + 10);
         }
         if (s.outline > 0) {
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = s.outline * 2;
+            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.lineWidth = s.outline * 1.5;
             ctx.lineJoin = 'round';
             ctx.strokeText(sample, tx, ty);
         }
         if (s.shadow) {
-            ctx.shadowColor = 'rgba(0,0,0,0.9)';
-            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(0,0,0,0.85)';
+            ctx.shadowBlur = 6;
             ctx.shadowOffsetX = 1;
             ctx.shadowOffsetY = 1;
         }
@@ -1097,11 +1193,39 @@ const App = {
         ctx.shadowBlur = 0;
     },
 
+    // ── Internal helper: generate SRT and return the path (used by startRender) ──
+    async _generateSRTForRender(audioFolder, outputFolder, language) {
+        const btn    = $('btn-generate-sub');
+        const status = $('sub-gen-status');
+        if (btn) { btn.textContent = 'Đang phân tích…'; btn.classList.add('disabled'); }
+        if (status) status.textContent = '⏳ Đang chạy Whisper…';
+        try {
+            const d = await fetch('/api/subtitle/generate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audio_folder: audioFolder, output_folder: outputFolder, language }),
+            }).then(r => r.json());
+            if (d.error) {
+                toast((d.error || '') + (d.detail ? ' — ' + d.detail : ''), 'error');
+                if (status) status.textContent = '❌ Thất bại';
+                return null;
+            }
+            const inp = $('srt-path'); if (inp) inp.value = d.srt_path || '';
+            if (status) status.textContent = `✅ ${d.entry_count} phụ đề — bắt đầu render…`;
+            return d.srt_path || null;
+        } catch (e) {
+            toast('Lỗi kết nối khi tạo phụ đề: ' + e.message, 'error');
+            if (status) status.textContent = '❌ Lỗi kết nối';
+            return null;
+        } finally {
+            if (btn) { btn.textContent = '🎙️ Phân tích giọng nói'; btn.classList.remove('disabled'); }
+        }
+    },
+
     // ── Whisper auto-generate ─────────────────────────────────
     async generateSubtitle() {
         const audioFolder  = $('audio-folder')?.value  || '';
         const outputFolder = $('output-folder')?.value || '';
-        const language     = $('sub-language')?.value  || 'vi';
+        const language     = $('sub-language')?.value  || 'auto';
         if (!audioFolder || !outputFolder) { toast('Cần chọn thư mục audio và thư mục xuất.', 'warning'); return; }
 
         const btn    = $('btn-generate-sub');
@@ -1147,6 +1271,25 @@ const App = {
             toast('File SRT mẫu đã được tạo trong thư mục xuất.', 'success');
         } catch (e) { toast('Lỗi: ' + e.message, 'error'); }
     },
+
+    // ── History: delete single record ─────────────────────────
+    async deleteHistory(id) {
+        try {
+            const d = await fetch(`/api/history/${id}`, { method: 'DELETE' }).then(r => r.json());
+            if (d.ok) { toast('Đã xoá bản ghi.', 'success'); this.loadHistory(); }
+            else toast('Xoá thất bại.', 'error');
+        } catch (e) { toast('Lỗi: ' + e.message, 'error'); }
+    },
+
+    // ── History: clear all ─────────────────────────────────────
+    async clearAllHistory() {
+        if (!confirm('Xoá toàn bộ lịch sử render?')) return;
+        try {
+            const d = await fetch('/api/history/clear', { method: 'POST' }).then(r => r.json());
+            if (d.ok) { toast('Đã xoá toàn bộ lịch sử.', 'success'); this.loadHistory(); }
+            else toast('Xoá thất bại.', 'error');
+        } catch (e) { toast('Lỗi: ' + e.message, 'error'); }
+    },
 };
 
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
@@ -1172,12 +1315,22 @@ if ('Notification' in window && Notification.permission === 'default') {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
+async function _systemInit() {
+    try {
+        return await fetch('/api/system/init').then(r => r.json());
+    } catch (_) { return {}; }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // The inline splash in index.html already handles reveal timing.
-    // We load data and call revealApp() when ready.
-    Promise.all([loadSystemInfo(), loadStats()]).finally(() => {
+    // Call system/init (loads Whisper model) in parallel with other boot tasks.
+    // revealApp is called only after init + loadSystemInfo + loadStats all complete.
+    Promise.all([
+        _systemInit(),
+        loadSystemInfo(),
+        loadStats(),
+    ]).then(([initResult]) => {
         if (typeof window.revealApp === 'function') {
-            window.revealApp();
+            window.revealApp(initResult || {});
         }
     });
 
@@ -1190,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (outFld) outFld.addEventListener('change', () => App.validateFolders());
 
     // Init subtitle preview on first style
-    App.renderSubPreview('youtube_classic');
+    App.renderSubPreview('karaoke');
 
     // JS tooltip system (position:fixed, not clipped by sidebar overflow)
     _initTooltip();
@@ -1205,3 +1358,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Expose globally so inline onclick="" handlers work
 window.App = App;
+
+
+

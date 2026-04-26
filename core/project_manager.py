@@ -156,6 +156,26 @@ class ProjectManager:
         except Exception:
             return []
 
+    def delete_history_record(self, record_id: int) -> bool:
+        """Delete a single history record by ID."""
+        try:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM render_history WHERE id = ?", (record_id,)
+                )
+                return cursor.rowcount > 0
+        except Exception:
+            return False
+
+    def clear_all_history(self) -> bool:
+        """Delete all render history records."""
+        try:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM render_history")
+            return True
+        except Exception:
+            return False
+
     # ── statistics ────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:

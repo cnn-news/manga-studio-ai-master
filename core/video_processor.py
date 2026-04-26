@@ -83,10 +83,11 @@ class RenderConfig:
     audio_fade:          float = 0.3
     bgm_path:            str | None = None
     bgm_volume:          float = 0.15
+    watermark_text:      str        = ""
     watermark_path:      str | None = None
-    watermark_position:  str   = "bottom_right"
-    watermark_opacity:   float = 0.7
-    watermark_scale:     float = 0.15
+    watermark_position:  str        = "bottom_right"
+    watermark_opacity:   float      = 0.7
+    watermark_scale:     float      = 0.15
     intro_path:          str | None = None
     outro_path:          str | None = None
     max_workers:         int | None = None   # None → auto (cpu_count // 2)
@@ -532,27 +533,61 @@ class VideoProcessor:
     # ── Phase 3a: watermark ───────────────────────────────────────────────
 
     def apply_watermark(self, input_path: str, output_path: str) -> dict:
-        if not self.config.watermark_path:
+        has_text  = bool(self.config.watermark_text and self.config.watermark_text.strip())
+        has_image = bool(self.config.watermark_path)
+        if not has_text and not has_image:
             return {"ok": True, "path": input_path, "skipped": True}
 
         self._log("Applying watermark…")
-        pos            = _WATERMARK_POS.get(self.config.watermark_position, "W-w-10:H-h-10")
-        filter_complex = (
-            f"[1:v]scale=iw*{self.config.watermark_scale}:-1,"
-            f"format=rgba,"
-            f"colorchannelmixer=aa={self.config.watermark_opacity}[wm];"
-            f"[0:v][wm]overlay={pos}[vout]"
-        )
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", input_path,
-            "-i", self.config.watermark_path,
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "0:a",
-            *self._sw_encode_opts(copy_audio=True),
-            output_path,
-        ]
+
+        if has_text:
+            # Text watermark via FFmpeg drawtext
+            _POS_TEXT = {
+                "top_left":     "x=20:y=20",
+                "top_right":    "x=w-text_w-20:y=20",
+                "bottom_left":  "x=20:y=h-text_h-20",
+                "bottom_right": "x=w-text_w-20:y=h-text_h-20",
+            }
+            pos      = _POS_TEXT.get(self.config.watermark_position, "x=w-text_w-20:y=h-text_h-20")
+            alpha    = self.config.watermark_opacity
+            fontsize = max(18, int(self.config.watermark_scale * 120))
+            # Escape special chars for drawtext
+            text = (self.config.watermark_text.strip()
+                    .replace("\\", "\\\\").replace("'", "\\'")
+                    .replace(":", "\\:").replace(",", "\\,"))
+            vf = (
+                f"drawtext=text='{text}':fontsize={fontsize}:"
+                f"fontcolor=white@{alpha}:"
+                f"shadowcolor=black@{alpha}:shadowx=2:shadowy=2:"
+                f"{pos}"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-vf", vf,
+                "-map", "0:v", "-map", "0:a",
+                *self._sw_encode_opts(copy_audio=True),
+                output_path,
+            ]
+        else:
+            # Image watermark
+            pos            = _WATERMARK_POS.get(self.config.watermark_position, "W-w-10:H-h-10")
+            filter_complex = (
+                f"[1:v]scale=iw*{self.config.watermark_scale}:-1,"
+                f"format=rgba,"
+                f"colorchannelmixer=aa={self.config.watermark_opacity}[wm];"
+                f"[0:v][wm]overlay={pos}[vout]"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-i", self.config.watermark_path,
+                "-filter_complex", filter_complex,
+                "-map", "[vout]", "-map", "0:a",
+                *self._sw_encode_opts(copy_audio=True),
+                output_path,
+            ]
+
         result = self._run_ffmpeg(cmd, timeout=1800)
         result["path"] = output_path if result["ok"] else ""
         if not result["ok"]:

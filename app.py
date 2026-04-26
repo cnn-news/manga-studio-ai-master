@@ -41,6 +41,33 @@ jobs: dict = {}
 
 _CONFIG_FIELDS = {f.name for f in fields(RenderConfig)}
 
+# ── Whisper model cache (loaded once at startup via /api/system/init) ─────────
+_whisper_cache: dict = {}   # {"backend": str, "model": <model>, "size": str}
+
+
+def _load_whisper_model(model_size: str = "base"):
+    """Load faster-whisper (or openai-whisper fallback) into the global cache.
+    Returns (backend_name, model) or (None, None) if unavailable.
+    """
+    global _whisper_cache
+    if _whisper_cache.get("model") and _whisper_cache.get("size") == model_size:
+        return _whisper_cache["backend"], _whisper_cache["model"]
+    try:
+        from faster_whisper import WhisperModel
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        _whisper_cache = {"backend": "faster", "model": model, "size": model_size}
+        return "faster", model
+    except ImportError:
+        pass
+    try:
+        import whisper as _ow
+        model = _ow.load_model(model_size)
+        _whisper_cache = {"backend": "openai", "model": model, "size": model_size}
+        return "openai", model
+    except ImportError:
+        pass
+    return None, None
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _api_error(message: str, detail: str = "", status: int = 400):
@@ -259,10 +286,28 @@ def render_status(job_id):
 @app.route("/api/history")
 def api_history():
     try:
-        limit = int(request.args.get("limit", 20))
+        limit = int(request.args.get("limit", 50))
         return jsonify(pm.get_render_history(limit=limit))
     except Exception as exc:
         return _api_error("History error", str(exc), 500)
+
+
+@app.route("/api/history/<int:record_id>", methods=["DELETE"])
+def api_history_delete(record_id):
+    try:
+        ok = pm.delete_history_record(record_id)
+        return jsonify({"ok": ok})
+    except Exception as exc:
+        return _api_error("Delete failed", str(exc), 500)
+
+
+@app.route("/api/history/clear", methods=["POST"])
+def api_history_clear():
+    try:
+        ok = pm.clear_all_history()
+        return jsonify({"ok": ok})
+    except Exception as exc:
+        return _api_error("Clear failed", str(exc), 500)
 
 
 @app.route("/api/stats")
@@ -492,6 +537,28 @@ def system_check():
         return _api_error("System check failed", str(exc), 500)
 
 
+# ── /api/system/init  (called once at splash — preloads Whisper model) ────────
+
+@app.route("/api/system/init")
+def system_init():
+    """Check all dependencies and preload the Whisper model into memory.
+    Called by the splash screen; blocks until model is loaded (~2-5s first run).
+    """
+    ffmpeg_ok = False
+    try:
+        ffmpeg_ok = _validator.check_ffmpeg().get("ok", False)
+    except Exception:
+        pass
+
+    backend, _ = _load_whisper_model("base")
+
+    return jsonify({
+        "ffmpeg_ok":       ffmpeg_ok,
+        "whisper_ok":      backend is not None,
+        "whisper_backend": backend or "none",
+    })
+
+
 # ── /api/browse/folder ────────────────────────────────────────────────────────
 
 @app.route("/api/browse/folder", methods=["POST"])
@@ -574,31 +641,38 @@ def browse_folder():
         return _api_error("Browse failed", str(exc), 500)
 
 
-# ── /api/subtitle/generate (Whisper) ─────────────────────────────────────────
+# ── /api/subtitle/generate (faster-whisper) ──────────────────────────────────
 
 @app.route("/api/subtitle/generate", methods=["POST"])
 def subtitle_generate():
-    """Auto-generate SRT from audio files using OpenAI Whisper."""
+    """Auto-generate SRT from audio files using faster-whisper (cached model)."""
 
     def _ts(s: float) -> str:
         ms = int((s % 1) * 1000)
         t  = int(s)
         return f"{t // 3600:02d}:{(t % 3600) // 60:02d}:{t % 60:02d},{ms:03d}"
 
-    try:
-        try:
-            import whisper as _whisper          # openai-whisper
-        except ImportError:
-            return _api_error(
-                "Whisper chưa được cài đặt",
-                "Chạy lệnh: pip install openai-whisper",
-                status=500,
-            )
+    def _transcribe(backend: str, model, fpath: str, language):
+        lang = None if (language in (None, "auto", "")) else language
+        segs = []
+        if backend == "faster":
+            segments, _ = model.transcribe(fpath, language=lang, task="transcribe",
+                                           beam_size=1, vad_filter=True)
+            for s in segments:
+                if s.text.strip():
+                    segs.append((s.start, s.end, s.text.strip()))
+        else:
+            result = model.transcribe(fpath, language=lang, task="transcribe")
+            for s in result.get("segments", []):
+                if s["text"].strip():
+                    segs.append((float(s["start"]), float(s["end"]), s["text"].strip()))
+        return segs
 
+    try:
         data          = request.json or {}
         audio_folder  = (data.get("audio_folder")  or "").strip()
         output_folder = (data.get("output_folder") or "").strip()
-        language      = data.get("language") or None   # None = auto-detect
+        language      = data.get("language") or None
         model_size    = data.get("model_size", "base")
 
         if not audio_folder or not os.path.isdir(audio_folder):
@@ -606,6 +680,15 @@ def subtitle_generate():
         if not output_folder:
             return _api_error("output_folder là bắt buộc")
         os.makedirs(output_folder, exist_ok=True)
+
+        # Use cached model (preloaded by /api/system/init); load on-demand if not cached
+        backend, model = _load_whisper_model(model_size)
+        if backend is None:
+            return _api_error(
+                "Chưa cài thư viện nhận dạng giọng nói",
+                "Chạy lệnh: pip install faster-whisper",
+                status=500,
+            )
 
         from config import SUPPORTED_AUDIO_FORMATS
         from core.audio_processor import AudioProcessor
@@ -617,9 +700,7 @@ def subtitle_generate():
         if not audio_files:
             return _api_error("Không tìm thấy file audio trong thư mục")
 
-        model = _whisper.load_model(model_size)
-        ap    = AudioProcessor()
-
+        ap     = AudioProcessor()
         blocks: list[str] = []
         idx    = 1
         offset = 0.0
@@ -631,14 +712,10 @@ def subtitle_generate():
             except Exception:
                 dur = 5.0
 
-            result = model.transcribe(fpath, language=language, task="transcribe")
-            for seg in result.get("segments", []):
-                text = seg["text"].strip()
-                if not text:
-                    continue
-                start = offset + float(seg["start"])
-                end   = offset + float(seg["end"])
-                blocks.append(f"{idx}\n{_ts(start)} --> {_ts(end)}\n{text}")
+            for (start, end, text) in _transcribe(backend, model, fpath, language):
+                blocks.append(
+                    f"{idx}\n{_ts(offset + start)} --> {_ts(offset + end)}\n{text}"
+                )
                 idx += 1
             offset += dur
 

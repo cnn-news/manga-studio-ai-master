@@ -37,8 +37,9 @@
       <div class="splash-steps">
         <span class="splash-step" id="splash-step-0">Khởi động hệ thống…</span>
         <span class="splash-step hidden" id="splash-step-1">Kiểm tra FFmpeg…</span>
-        <span class="splash-step hidden" id="splash-step-2">Tải cài đặt…</span>
-        <span class="splash-step hidden" id="splash-step-3">Sẵn sàng!</span>
+        <span class="splash-step hidden" id="splash-step-2">Tải thư viện AI (Whisper)…</span>
+        <span class="splash-step hidden" id="splash-step-3">Tải cài đặt…</span>
+        <span class="splash-step hidden" id="splash-step-4">Sẵn sàng!</span>
       </div>
     </div>
 
@@ -181,10 +182,46 @@
               </div>
               <div class="section-body" id="subtitle-panel" style="display:none">
 
+                <!-- Ngôn ngữ audio -->
+                <div class="field-row">
+                  <label class="field-label">Ngôn ngữ audio</label>
+                  <select class="field-select" id="sub-language">
+                    <option value="en">Tiếng Anh</option>
+                    <option value="vi">Tiếng Việt</option>
+                    <option value="ja">Tiếng Nhật</option>
+                    <option value="auto" selected>Auto (tự động phát hiện)</option>
+                  </select>
+                </div>
+
+                <!-- Nguồn phụ đề -->
+                <div class="field-row">
+                  <label class="field-label">Nguồn phụ đề</label>
+                  <div class="sub-source-row">
+                    <div class="sub-source-btn active" data-source="auto" onclick="App.toggleSubtitleSource('auto')">🎙️ Tự động từ audio</div>
+                    <div class="sub-source-btn" data-source="srt" onclick="App.toggleSubtitleSource('srt')">📄 Chọn file SRT</div>
+                  </div>
+                </div>
+
+                <!-- Auto section -->
+                <div id="sub-auto-section">
+                  <div class="sub-auto-row">
+                    <div class="btn-sm" id="btn-generate-sub" onclick="App.generateSubtitle()">🎙️ Phân tích giọng nói</div>
+                    <span class="sub-gen-status" id="sub-gen-status"></span>
+                  </div>
+                </div>
+
+                <!-- SRT section -->
+                <div id="sub-srt-section" class="hidden">
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="srt-path" placeholder="Chọn file .srt…">
+                    <div class="btn-browse" onclick="App.browseFile('srt-path', ['.srt'])"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div>
+                  </div>
+                </div>
+
                 <!-- Style buttons (4×2) -->
-                <label class="field-label" style="margin-bottom:4px">Phong cách</label>
+                <label class="field-label" style="margin-bottom:4px;margin-top:4px">Phong cách</label>
                 <div class="sub-styles-grid">
-                  <div class="sub-style-btn active" data-style="youtube_classic" onclick="App.selectSubStyle(this)">
+                  <div class="sub-style-btn" data-style="youtube_classic" onclick="App.selectSubStyle(this)">
                     <div class="sub-thumb" style="background:#000"><span style="color:#fff;font-size:7px">Aa</span></div>
                     <span class="sub-label">YouTube</span>
                   </div>
@@ -200,7 +237,7 @@
                     <div class="sub-thumb" style="background:#0d0d1a"><span style="color:#FFE500;font-size:8px;font-weight:700">Aa</span></div>
                     <span class="sub-label">Social</span>
                   </div>
-                  <div class="sub-style-btn" data-style="karaoke" onclick="App.selectSubStyle(this)">
+                  <div class="sub-style-btn active" data-style="karaoke" onclick="App.selectSubStyle(this)">
                     <div class="sub-thumb" style="background:rgba(0,0,40,0.9)"><span style="color:#FFE500;font-size:7px;font-weight:700;border-bottom:1px solid #FFE500">Aa</span></div>
                     <span class="sub-label">Karaoke</span>
                   </div>
@@ -220,15 +257,6 @@
 
                 <!-- Preview canvas -->
                 <canvas id="sub-preview-canvas" class="sub-preview-canvas" width="320" height="72"></canvas>
-
-                <!-- SRT file picker -->
-                <div class="field-row">
-                  <label class="field-label">File SRT (tuỳ chọn)</label>
-                  <div class="input-with-btn">
-                    <input type="text" class="field-input" id="srt-path" placeholder="Chọn file .srt…">
-                    <div class="btn-browse" onclick="App.browseFile('srt-path', ['.srt'])"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div>
-                  </div>
-                </div>
 
               </div>
             </div>
@@ -387,6 +415,7 @@
         <div class="history-toolbar">
           <div class="btn-sm" onclick="App.loadHistory()">Làm mới</div>
           <span class="history-count" id="history-count">—</span>
+          <div class="btn-sm btn-danger-sm" onclick="App.clearAllHistory()">Xoá tất cả</div>
         </div>
         <div class="history-list" id="history-list">
           <div class="history-empty" id="history-empty">
@@ -398,9 +427,15 @@
 
       <!-- ── Sidebar Footer ────────────────────────────────────────── -->
       <div class="sidebar-footer">
-        <div class="btn-render" id="btn-render" onclick="App.startRender()">
-          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          <span id="btn-render-label">Bắt Đầu Render</span>
+        <div class="sidebar-footer-row">
+          <div class="btn-reset" id="btn-reset" onclick="App.resetSettings()" title="Reset tất cả về mặc định">
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+            <span>Reset</span>
+          </div>
+          <div class="btn-render" id="btn-render" onclick="App.startRender()">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <span id="btn-render-label">Bắt Đầu Render</span>
+          </div>
         </div>
       </div>
 
@@ -445,23 +480,16 @@
 
       <!-- ─── STATE: IDLE ─────────────────────────────────────────── -->
       <div class="panel-state active" id="state-idle">
-        <!-- Heatmap (full width — clock moved to footer) -->
+        <!-- 4-market heatmaps -->
         <div class="heatmap-widget heatmap-full">
           <div class="widget-title">
-            Giờ vàng YouTube (EST)
+            Giờ vàng YouTube theo thị trường
             <span class="heatmap-legend">
               <span class="hm-dot hm-0"></span>Thấp
-              <span class="hm-dot hm-4"></span>Cao
+              <span class="hm-dot hm-4"></span>Đỉnh
             </span>
           </div>
-          <div class="heatmap-wrap">
-            <div class="heatmap-row-labels">
-              <span>T2</span><span>T3</span><span>T4</span>
-              <span>T5</span><span>T6</span><span>T7</span><span>CN</span>
-            </div>
-            <div class="heatmap-grid" id="heatmap-grid"><!-- filled by script --></div>
-            <div class="heatmap-col-labels" id="heatmap-col-labels"><!-- filled by script --></div>
-          </div>
+          <div class="heatmap-markets" id="heatmap-markets"><!-- filled by script --></div>
         </div>
       </div><!-- /state-idle -->
 
@@ -723,39 +751,53 @@
 <script>
 // ── Splash ──────────────────────────────────────────────────────────────
 (function () {
-  var STEPS = [
-    { id: 'splash-step-0', pct: 25,  ms: 0 },
-    { id: 'splash-step-1', pct: 50,  ms: 600 },
-    { id: 'splash-step-2', pct: 75,  ms: 1200 },
-    { id: 'splash-step-3', pct: 100, ms: 1800 },
-  ];
   var fill = document.getElementById('splash-fill');
-  STEPS.forEach(function (s) {
-    setTimeout(function () {
-      fill.style.width = s.pct + '%';
-      document.querySelectorAll('.splash-step').forEach(function (el) { el.classList.add('hidden'); });
-      var el = document.getElementById(s.id);
-      if (el) el.classList.remove('hidden');
-    }, s.ms);
-  });
+  var _shown = false;
 
-  window.revealApp = function () {
-    var splash = document.getElementById('splash');
-    var appEl  = document.getElementById('app');
-    splash.classList.add('fade-out');
+  function _showStep(id, pct) {
+    if (fill) fill.style.width = pct + '%';
+    document.querySelectorAll('.splash-step').forEach(function (el) { el.classList.add('hidden'); });
+    var el = document.getElementById(id);
+    if (el) el.classList.remove('hidden');
+  }
+
+  // Animate first 3 steps with timers
+  _showStep('splash-step-0', 15);
+  setTimeout(function () { _showStep('splash-step-1', 30); }, 400);
+  setTimeout(function () { _showStep('splash-step-2', 55); }, 900);
+
+  window.revealApp = function (initResult) {
+    if (_shown) return;
+    _shown = true;
+    // Show step 3 & 4 quickly before revealing
+    _showStep('splash-step-3', 85);
     setTimeout(function () {
-      splash.style.display = 'none';
-      appEl.classList.remove('hidden');
-      appEl.classList.add('fade-in');
-    }, 500);
+      var step4 = document.getElementById('splash-step-4');
+      if (step4) {
+        if (initResult && initResult.whisper_ok) {
+          step4.textContent = 'Sẵn sàng! (AI: ' + (initResult.whisper_backend || 'ok') + ')';
+        } else if (initResult && !initResult.whisper_ok) {
+          step4.textContent = 'Sẵn sàng! (Whisper chưa cài — subtitle bị tắt)';
+        }
+      }
+      _showStep('splash-step-4', 100);
+    }, 300);
+    setTimeout(function () {
+      var splash = document.getElementById('splash');
+      var appEl  = document.getElementById('app');
+      splash.classList.add('fade-out');
+      setTimeout(function () {
+        splash.style.display = 'none';
+        appEl.classList.remove('hidden');
+        appEl.classList.add('fade-in');
+      }, 500);
+    }, 700);
   };
 
-  // Fallback reveal if app.js hasn't called revealApp after 4s
+  // Fallback: reveal after 30s even if init hangs
   setTimeout(function () {
-    if (!document.getElementById('app').classList.contains('fade-in')) {
-      window.revealApp();
-    }
-  }, 4000);
+    if (!_shown) window.revealApp({});
+  }, 30000);
 })();
 
 // ── Tab switching ────────────────────────────────────────────────────────
@@ -807,43 +849,111 @@ function _updateClocks() {
 _updateClocks();
 setInterval(_updateClocks, 1000);
 
-// ── YouTube EST heatmap ───────────────────────────────────────────────────
+// ── YouTube golden-hour heatmaps — 4 markets ─────────────────────────────
 (function () {
-  // rows = Mon–Sun, cols = 0–23 EST; values 0–4 (none→peak)
-  var DATA = [
-    [0,0,0,0,0,1,1,2,2,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0], // Mon
-    [0,0,0,0,0,1,1,2,2,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0], // Tue
-    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0], // Wed
-    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0], // Thu
-    [0,0,0,0,0,1,1,2,2,2,2,2,3,3,3,4,4,4,4,4,4,3,2,1], // Fri
-    [0,0,0,1,1,1,2,2,3,3,3,4,4,4,4,4,4,4,4,4,3,3,2,1], // Sat
-    [0,0,0,1,1,1,2,2,3,3,3,3,4,4,4,4,4,4,3,3,3,2,1,0], // Sun
-  ];
   var TIPS = ['Không có', 'Thấp', 'Trung bình', 'Cao', 'Đỉnh cao'];
-  var grid = document.getElementById('heatmap-grid');
-  var cols = document.getElementById('heatmap-col-labels');
-  if (!grid) return;
+  // rows = Mon–Sun, cols = 0–23 LOCAL time; values 0–4
+  var MARKETS = [
+    {
+      id: 'us', flag: '🇺🇸', name: 'Mỹ', tz: 'EST',
+      data: [
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,3,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,3,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,4,4,4,4,4,4,3,2,1],
+        [0,0,0,0,1,1,1,2,3,3,3,4,4,4,4,4,4,4,4,4,3,3,2,1],
+        [0,0,0,0,1,1,1,2,3,3,3,3,4,4,4,4,4,4,3,3,3,2,1,0],
+      ]
+    },
+    {
+      id: 'uk', flag: '🇬🇧', name: 'Anh', tz: 'GMT',
+      data: [
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,1,1,1,2,2,3,4,4,4,4,4,4,4,4,3,3,2,1,0,0],
+        [0,0,0,0,1,1,1,2,2,3,3,4,4,4,4,4,4,3,3,3,2,1,0,0],
+      ]
+    },
+    {
+      id: 'au', flag: '🇦🇺', name: 'Úc', tz: 'AEST',
+      data: [
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,3,3,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,3,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0,0],
+        [0,0,0,0,1,1,2,2,3,3,4,4,4,4,4,4,4,4,3,3,2,1,0,0],
+        [0,0,0,0,1,1,2,2,3,3,3,4,4,4,4,4,4,3,3,3,2,1,0,0],
+      ]
+    },
+    {
+      id: 'ca', flag: '🇨🇦', name: 'Canada', tz: 'EST',
+      data: [
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,3,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,3,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,3,4,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,2,3,3,3,4,4,4,4,4,3,2,1,0],
+        [0,0,0,0,0,0,1,1,2,2,2,3,3,3,3,4,4,4,4,4,4,3,2,1],
+        [0,0,0,0,1,1,1,2,3,3,3,4,4,4,4,4,4,4,4,4,3,3,2,1],
+        [0,0,0,0,1,1,1,2,3,3,3,3,4,4,4,4,4,3,3,3,2,2,1,0],
+      ]
+    },
+  ];
 
-  var frag = document.createDocumentFragment();
-  DATA.forEach(function (row) {
-    row.forEach(function (v) {
-      var cell = document.createElement('div');
-      cell.className = 'heatmap-cell hm-' + v;
-      cell.title = TIPS[v];
-      frag.appendChild(cell);
+  var container = document.getElementById('heatmap-markets');
+  if (!container) return;
+
+  MARKETS.forEach(function (mkt) {
+    var wrap = document.createElement('div');
+    wrap.className = 'hm-market';
+
+    // Header
+    var hdr = document.createElement('div');
+    hdr.className = 'hm-market-hdr';
+    hdr.innerHTML = '<span class="hm-flag">' + mkt.flag + '</span>'
+                  + '<span class="hm-mname">' + mkt.name + '</span>'
+                  + '<span class="hm-tz">' + mkt.tz + '</span>';
+    wrap.appendChild(hdr);
+
+    // Grid + row labels
+    var inner = document.createElement('div');
+    inner.className = 'heatmap-wrap';
+
+    var rowLabels = document.createElement('div');
+    rowLabels.className = 'heatmap-row-labels';
+    ['T2','T3','T4','T5','T6','T7','CN'].forEach(function (d) {
+      var s = document.createElement('span'); s.textContent = d;
+      rowLabels.appendChild(s);
     });
-  });
-  grid.appendChild(frag);
+    inner.appendChild(rowLabels);
 
-  if (cols) {
-    var lfrag = document.createDocumentFragment();
+    var grid = document.createElement('div');
+    grid.className = 'heatmap-grid';
+    mkt.data.forEach(function (row) {
+      row.forEach(function (v) {
+        var cell = document.createElement('div');
+        cell.className = 'heatmap-cell hm-' + v;
+        cell.title = TIPS[v];
+        grid.appendChild(cell);
+      });
+    });
+    inner.appendChild(grid);
+
+    var colLabels = document.createElement('div');
+    colLabels.className = 'heatmap-col-labels';
     for (var h = 0; h < 24; h++) {
       var lbl = document.createElement('span');
       lbl.textContent = (h % 6 === 0) ? h + 'h' : '';
-      lfrag.appendChild(lbl);
+      colLabels.appendChild(lbl);
     }
-    cols.appendChild(lfrag);
-  }
+    inner.appendChild(colLabels);
+    wrap.appendChild(inner);
+    container.appendChild(wrap);
+  });
 })();
 </script>
 
