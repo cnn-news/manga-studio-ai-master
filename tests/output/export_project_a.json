@@ -1,9 +1,0 @@
-{
-  "name": "Project A",
-  "settings": {
-    "effect": "zoom_pulse",
-    "transition": "fade_black",
-    "fps": 30
-  },
-  "exported_at": "2026-04-24T21:59:13.306634"
-}

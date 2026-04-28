@@ -1588,7 +1588,11 @@ img, video, canvas, iframe { max-width: 100%; }
 .btn-render svg { width: 18px; height: 18px; fill: currentColor; }
 .btn-render:hover    { box-shadow: 0 6px 28px var(--accent-glow); }
 .btn-render.disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+.btn-render.rendering { cursor: not-allowed; pointer-events: none; }
 .disabled { cursor: not-allowed !important; }
+.btn-spinner { animation: spin 0.9s linear infinite; transform-origin: center; }
+/* hide stat cards after render */
+.main-top-strip.hidden-cards .idle-cards { visibility: hidden; opacity: 0; }
 /* ── Subtitle auto-generate row ───────────────────────────── */
 .sub-auto-row { display: flex; align-items: center; gap: 8px; }
 

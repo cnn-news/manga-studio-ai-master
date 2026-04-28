@@ -1,3 +1,0 @@
-file 'D:/My Projects/python_tools/Manga Studio AI Master/tests/output/test_zoom_pulse.mp4'
-file 'D:/My Projects/python_tools/Manga Studio AI Master/tests/output/test_pan_horizontal.mp4'
-file 'D:/My Projects/python_tools/Manga Studio AI Master/tests/output/test_pan_vertical.mp4'

@@ -379,14 +379,27 @@
                     Video bitrate
                     <span class="info-icon" data-tooltip="Chất lượng hình ảnh video. Cao = sắc nét hơn nhưng file lớn hơn. Khuyến nghị: 8M (Full HD), 20M (4K).">i</span>
                   </label>
-                  <input type="text" class="field-input" id="video-bitrate" placeholder="8M">
+                  <select class="field-select" id="video-bitrate">
+                    <option value="2M">2 Mbps (thấp)</option>
+                    <option value="4M">4 Mbps (SD)</option>
+                    <option value="8M" selected>8 Mbps (Full HD)</option>
+                    <option value="12M">12 Mbps (Full HD cao)</option>
+                    <option value="20M">20 Mbps (4K)</option>
+                    <option value="30M">30 Mbps (Premium)</option>
+                  </select>
                 </div>
                 <div class="field-row">
                   <label class="field-label">
                     Audio bitrate
                     <span class="info-icon" data-tooltip="Chất lượng âm thanh. Cao hơn = rõ hơn. 192k là chuẩn YouTube; 320k cho chất lượng cao nhất.">i</span>
                   </label>
-                  <input type="text" class="field-input" id="audio-bitrate" placeholder="192k">
+                  <select class="field-select" id="audio-bitrate">
+                    <option value="96k">96 kbps</option>
+                    <option value="128k">128 kbps</option>
+                    <option value="192k" selected>192 kbps (YouTube)</option>
+                    <option value="256k">256 kbps</option>
+                    <option value="320k">320 kbps (Premium)</option>
+                  </select>
                 </div>
                 <div class="field-row">
                   <label class="field-label">Video intro</label>
@@ -433,7 +446,10 @@
             <span>Reset</span>
           </div>
           <div class="btn-render" id="btn-render" onclick="App.startRender()">
-            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="btn-render-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="btn-render-spinner" class="hidden btn-spinner" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 56" stroke-linecap="round"/>
+            </svg>
             <span id="btn-render-label">Bắt Đầu Render</span>
           </div>
         </div>

@@ -69,7 +69,6 @@ def _pick_port(host: str, start: int, max_tries: int = 10) -> int:
 def _ensure_dirs():
     dirs = [
         Path("database"),
-        Path("tests") / "output",
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
@@ -112,7 +111,7 @@ def main():
 
     # 3. Required directories
     _ensure_dirs()
-    print("[OK] Thư mục database/ và tests/output/ đã sẵn sàng.")
+    print("[OK] Thư mục database/ đã sẵn sàng.")
 
     # 4. Import app after env is verified (avoids import-time side effects)
     try:

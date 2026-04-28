@@ -518,6 +518,25 @@ function _startTimer() {
 
 function _stopTimer() { clearInterval(_timerIv); _timerIv = null; }
 
+function _setRenderBtnState(state) {
+    const btn     = $('btn-render');
+    const icon    = $('btn-render-icon');
+    const spinner = $('btn-render-spinner');
+    const label   = $('btn-render-label');
+    if (!btn) return;
+    if (state === 'rendering') {
+        btn.classList.add('disabled', 'rendering');
+        if (icon)    icon.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (label)   label.textContent = 'Đang render…';
+    } else {
+        btn.classList.remove('disabled', 'rendering');
+        if (icon)    icon.classList.remove('hidden');
+        if (spinner) spinner.classList.add('hidden');
+        if (label)   label.textContent = 'Bắt Đầu Render';
+    }
+}
+
 function addLog(msg, level = 'info') {
     const body = $('log-body');
     if (!body) return;
@@ -581,9 +600,10 @@ function onComplete(result) {
     addLog('✅ Render hoàn tất!', 'success');
     document.title = 'Manga Studio AI ✓';
     setTimeout(() => { document.title = 'Manga Studio AI'; }, 8000);
-    // Re-enable render button
-    const rbtn = $('btn-render');
-    if (rbtn) rbtn.classList.remove('disabled');
+    _setRenderBtnState('idle');
+    // Hide stat cards
+    const strip = document.querySelector('.main-top-strip');
+    if (strip) strip.classList.add('hidden-cards');
 
     // Notification
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -611,9 +631,8 @@ function onError(data) {
     addLog('❌ Lỗi: ' + (data.message || data.error || 'Unknown'), 'error');
     toast('Render thất bại: ' + (data.message || data.error || ''), 'error');
     document.title = 'Manga Studio AI';
+    _setRenderBtnState('idle');
     showState('idle');
-    const rbtn = $('btn-render');
-    if (rbtn) rbtn.classList.remove('disabled');
 }
 
 function _connectSocket(jobId) {
@@ -819,9 +838,7 @@ const App = {
             if (!d.job_id) throw new Error(d.error || 'Không nhận được job_id');
             _jobId = d.job_id;
 
-            // Disable render button while running
-            const rbtn = $('btn-render');
-            if (rbtn) rbtn.classList.add('disabled');
+            _setRenderBtnState('rendering');
 
             // Reset UI
             const fill = $('progress-fill');
@@ -890,7 +907,7 @@ const App = {
         addLog('Render đã hủy.', 'warning');
         toast('Đã hủy render.', 'warning');
         document.title = 'Manga Studio AI';
-        const rbtn = $('btn-render'); if (rbtn) rbtn.classList.remove('disabled');
+        _setRenderBtnState('idle');
         showState('idle');
         _jobId = null;
     },
@@ -898,6 +915,8 @@ const App = {
     newRender() {
         _jobId = null;
         this.resetSettings();
+        const strip = document.querySelector('.main-top-strip');
+        if (strip) strip.classList.remove('hidden-cards');
         showState('idle');
         document.title = 'Manga Studio AI';
     },
@@ -942,8 +961,8 @@ const App = {
         setVal('audio-fade-out', '1.0');
         const fo = document.getElementById('audio-fade-out-val'); if (fo) fo.textContent = '1.0s';
         setVal('watermark-text', '');
-        setVal('video-bitrate',  '');
-        setVal('audio-bitrate',  '');
+        setVal('video-bitrate',  '8M');
+        setVal('audio-bitrate',  '192k');
         setVal('intro-path',     '');
         setVal('outro-path',     '');
         // Folder messages
@@ -1151,140 +1170,220 @@ const App = {
         const canvas = document.getElementById('sub-preview-canvas');
         if (!canvas) return;
 
-        // Synced with SUBTITLE_PRESETS in subtitle_engine.py
         const STYLES = {
-            youtube_classic: { color:'#fff',     bg:'rgba(0,0,0,0.72)', size:11, bold:false, italic:false, outline:0, shadow:false, anim:'fade'      },
-            netflix_style:   { color:'#fff',     bg:null,               size:13, bold:true,  italic:false, outline:3, shadow:true,  anim:'fade'      },
-            minimal:         { color:'#eeeeee',  bg:null,               size:10, bold:false, italic:false, outline:1, shadow:false, anim:'fade_slow' },
-            social_media:    { color:'#FFE500',  bg:null,               size:13, bold:true,  italic:false, outline:2, shadow:true,  anim:'pop'       },
-            karaoke:         { color:'#FFE500',  bg:'rgba(0,0,30,0.78)',size:12, bold:true,  italic:false, outline:0, shadow:false, anim:'karaoke',  karaokeUnread:'rgba(255,255,255,0.9)' },
-            anime:           { color:'#fff',     bg:null,               size:14, bold:true,  italic:false, outline:6, shadow:false, anim:'flash'     },
-            cinematic:       { color:'#f5f5dc',  bg:'rgba(0,0,0,0.45)',size:10, bold:false, italic:true,  outline:0, shadow:false, anim:'fade_slow' },
-            pop:             { color:'#FF6B9D',  bg:null,               size:13, bold:true,  italic:false, outline:3, shadow:true,  anim:'pop'       },
+            youtube_classic: { color:'#fff',     bg:'rgba(0,0,0,0.72)', size:11, bold:false, italic:false, outline:0,  shadow:false, cycle:3400 },
+            netflix_style:   { color:'#fff',     bg:null,               size:13, bold:true,  italic:false, outline:3,  shadow:true,  cycle:3200 },
+            minimal:         { color:'#eeeeee',  bg:null,               size:10, bold:false, italic:false, outline:1,  shadow:false, cycle:4500 },
+            social_media:    { color:'#FFE500',  bg:null,               size:13, bold:true,  italic:false, outline:2,  shadow:true,  cycle:2800 },
+            karaoke:         { color:'#FFE500',  bg:'rgba(0,0,30,0.78)',size:12, bold:true,  italic:false, outline:0,  shadow:false, cycle:3800, unread:'rgba(255,255,255,0.85)' },
+            anime:           { color:'#fff',     bg:null,               size:14, bold:true,  italic:false, outline:6,  shadow:false, cycle:2600 },
+            cinematic:       { color:'#f5f5dc',  bg:'rgba(0,0,0,0.45)',size:10, bold:false, italic:true,  outline:0,  shadow:false, cycle:5000 },
+            pop:             { color:'#FF6B9D',  bg:null,               size:13, bold:true,  italic:false, outline:3,  shadow:true,  cycle:2800 },
         };
-        const s      = STYLES[style] || STYLES.youtube_classic;
-        const sample = 'Đây là phụ đề mẫu của bạn ✨';
-        const ctx    = canvas.getContext('2d');
+        const s   = STYLES[style] || STYLES.youtube_classic;
+        const ctx = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
-
-        const CYCLE = { karaoke:3600, fade:3200, fade_slow:4000, pop:2800, flash:2600 };
-        const cycleMs = CYCLE[s.anim] || 3200;
         const t0 = performance.now();
 
-        const fontDecl = () =>
-            [s.italic ? 'italic':'', s.bold ? 'bold':'', `${s.size}px`, 'Arial,sans-serif']
-            .filter(Boolean).join(' ');
+        const WORDS = ['Đây', 'là', 'phụ', 'đề', 'mẫu', '✨'];
+        const sample = WORDS.join(' ');
+
+        const font = () =>
+            [s.italic?'italic':'', s.bold?'bold':'', `${s.size}px`,
+             style==='cinematic'?'Georgia,serif':'Arial,sans-serif'].filter(Boolean).join(' ');
 
         const drawBg = () => {
             ctx.clearRect(0, 0, W, H);
-            ctx.fillStyle = '#0d0d1a';
-            ctx.fillRect(0, 0, W, H);
-            // simulated video frame halves
-            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillStyle = '#0d0d1a'; ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = 'rgba(255,255,255,0.025)';
             ctx.fillRect(4, 4, W/2-8, H-8);
             ctx.fillRect(W/2+4, 4, W/2-8, H-8);
         };
 
-        const drawText = (alpha, x, y, tw) => {
+        // base draw with alpha and optional vertical offset
+        const drawCore = (alpha, offsetY = 0) => {
             ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+            ctx.font = font();
+            const tw = ctx.measureText(sample).width;
+            const tx = Math.max(6, (W-tw)/2);
+            const ty = H - 9 + offsetY;
             if (s.bg) {
                 ctx.fillStyle = s.bg;
-                ctx.fillRect(Math.max(0, x-8), y-s.size-3, Math.min(tw+16, W), s.size+10);
+                ctx.fillRect(Math.max(0,tx-8), ty-s.size-3, Math.min(tw+16,W), s.size+10);
             }
             if (s.outline > 0) {
-                ctx.font = fontDecl();
-                ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+                ctx.strokeStyle = 'rgba(0,0,0,0.92)';
                 ctx.lineWidth   = s.outline * 1.5;
                 ctx.lineJoin    = 'round';
-                ctx.strokeText(sample, x, y);
+                ctx.strokeText(sample, tx, ty);
             }
             if (s.shadow) {
-                ctx.shadowColor   = 'rgba(0,0,0,0.8)';
-                ctx.shadowBlur    = 5;
-                ctx.shadowOffsetX = 1;
-                ctx.shadowOffsetY = 1;
+                ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=5;
+                ctx.shadowOffsetX=1; ctx.shadowOffsetY=1;
             }
             ctx.fillStyle = s.color;
-            ctx.fillText(sample, x, y);
-            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+            ctx.fillText(sample, tx, ty);
+            ctx.shadowColor='transparent'; ctx.shadowBlur=0;
             ctx.globalAlpha = 1;
+            return { tx, ty, tw };
         };
 
+        // easeOut cubic
+        const easeOut = p => 1 - Math.pow(1-p, 3);
+        const easeIn  = p => Math.pow(p, 2);
+
         const frame = (now) => {
-            const t = ((now - t0) % cycleMs) / cycleMs; // 0..1 per cycle
+            const t = ((now - t0) % s.cycle) / s.cycle;
             drawBg();
+            ctx.font = font();
 
-            ctx.font = fontDecl();
-            const tw = ctx.measureText(sample).width;
-            const tx = Math.max(6, (W - tw) / 2);
-            const ty = H - 9;
-
-            // ── per-anim logic ──────────────────────────────────────────
-            if (s.anim === 'karaoke') {
-                // Phase: 0→0.08 fade-in | 0.08→0.82 sweep | 0.82→0.92 hold | 0.92→1 fade-out
+            // ── KARAOKE: word-by-word sweep ──────────────────────────
+            if (style === 'karaoke') {
                 let alpha = 1;
-                if (t < 0.08)       alpha = t / 0.08;
-                else if (t > 0.92)  alpha = 1 - (t - 0.92) / 0.08;
+                if (t < 0.07)      alpha = t / 0.07;
+                else if (t > 0.92) alpha = 1 - (t-0.92)/0.08;
+
+                const tw = ctx.measureText(sample).width;
+                const tx = Math.max(6, (W-tw)/2), ty = H-9;
 
                 ctx.globalAlpha = alpha;
-                // Background box
                 if (s.bg) {
                     ctx.fillStyle = s.bg;
-                    ctx.fillRect(Math.max(0, tx-8), ty-s.size-3, Math.min(tw+16, W), s.size+10);
+                    ctx.fillRect(Math.max(0,tx-8), ty-s.size-3, Math.min(tw+16,W), s.size+10);
                 }
-                // 1. Draw all text in "unread" color
-                ctx.fillStyle = s.karaokeUnread || 'rgba(255,255,255,0.85)';
+                // unread text
+                ctx.fillStyle = s.unread || 'rgba(255,255,255,0.85)';
                 ctx.fillText(sample, tx, ty);
-                // 2. Clip to sweep region and draw in highlight color
-                const sweepProgress = t < 0.08 ? 0 : t > 0.88 ? 1 : (t - 0.08) / 0.80;
-                const sweepX = tx + sweepProgress * tw;
+                // sweep
+                const sp = t < 0.07 ? 0 : t > 0.88 ? 1 : easeOut((t-0.07)/0.81);
+                const sweepX = tx + sp * tw;
+                ctx.save();
+                ctx.beginPath(); ctx.rect(tx-1, 0, sweepX-tx+2, H); ctx.clip();
+                ctx.fillStyle = s.color; ctx.fillText(sample, tx, ty);
+                ctx.restore();
+                ctx.globalAlpha = 1;
+
+            // ── YOUTUBE: slide up from bottom + fade + black box ─────
+            } else if (style === 'youtube_classic') {
+                let alpha = 1, offsetY = 0;
+                if (t < 0.14) {
+                    const p = easeOut(t/0.14);
+                    alpha   = p;
+                    offsetY = (1-p) * 12;
+                } else if (t > 0.82) {
+                    alpha   = 1 - easeIn((t-0.82)/0.18);
+                    offsetY = easeIn((t-0.82)/0.18) * 6;
+                }
+                drawCore(alpha, offsetY);
+
+            // ── NETFLIX: clean fade with subtle downward drift ───────
+            } else if (style === 'netflix_style') {
+                let alpha = 1, offsetY = 0;
+                if (t < 0.15) {
+                    const p = easeOut(t/0.15);
+                    alpha   = p;
+                    offsetY = (1-p) * 5;
+                } else if (t > 0.80) {
+                    alpha = 1 - (t-0.80)/0.20;
+                }
+                drawCore(alpha, offsetY);
+
+            // ── MINIMAL: very slow graceful fade ─────────────────────
+            } else if (style === 'minimal') {
+                let alpha = 1;
+                if (t < 0.22)      alpha = easeOut(t/0.22);
+                else if (t > 0.72) alpha = 1 - easeIn((t-0.72)/0.28);
+                drawCore(alpha);
+
+            // ── SOCIAL MEDIA: scale-spring pop in, bounce out ────────
+            } else if (style === 'social_media') {
+                let alpha = 1, scale = 1;
+                if (t < 0.14) {
+                    const p = t/0.14;
+                    scale = 0.45 + 0.7*p*(2.1-p);  // spring overshoot
+                    alpha = easeOut(p);
+                } else if (t > 0.80) {
+                    const p = (t-0.80)/0.20;
+                    scale = 1 - 0.2*easeIn(p);
+                    alpha = 1 - easeIn(p);
+                }
+                const tw = ctx.measureText(sample).width;
+                const tx = Math.max(6,(W-tw)/2), ty = H-9;
+                ctx.save();
+                ctx.translate(W/2, ty); ctx.scale(scale,scale); ctx.translate(-W/2,-ty);
+                drawCore(alpha);
+                ctx.restore();
+
+            // ── ANIME: impact flash — instant appear, white burst ────
+            } else if (style === 'anime') {
+                let alpha = 1;
+                if (t < 0.06)      alpha = t/0.06;
+                else if (t > 0.86) alpha = 1-(t-0.86)/0.14;
+
+                // white flash burst on entry
+                if (t < 0.08) {
+                    const flash = Math.max(0, 1 - t/0.08) * 0.55;
+                    ctx.fillStyle = `rgba(255,255,255,${flash})`;
+                    ctx.fillRect(0, 0, W, H);
+                }
+                drawCore(alpha);
+
+            // ── CINEMATIC: slow left-to-right text reveal ────────────
+            } else if (style === 'cinematic') {
+                let alpha = 1;
+                if (t < 0.18)      alpha = easeOut(t/0.18) * 0.92;
+                else if (t > 0.76) alpha = 0.92 * (1 - easeIn((t-0.76)/0.24));
+                // reveal text from left using clip
+                const revealP = t < 0.20 ? easeOut(t/0.20) : 1;
+                const tw = ctx.measureText(sample).width;
+                const tx = Math.max(6,(W-tw)/2), ty = H-9;
+                ctx.globalAlpha = alpha;
+                if (s.bg) {
+                    ctx.fillStyle = s.bg;
+                    ctx.fillRect(Math.max(0,tx-8), ty-s.size-3, Math.min(tw+16,W), s.size+10);
+                }
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(tx - 1, 0, sweepX - tx + 2, H);
-                ctx.clip();
+                ctx.rect(0, 0, tx + revealP*(tw+16), H); ctx.clip();
                 ctx.fillStyle = s.color;
+                ctx.font = font();
                 ctx.fillText(sample, tx, ty);
                 ctx.restore();
                 ctx.globalAlpha = 1;
 
-            } else if (s.anim === 'pop') {
-                // Phase: 0→0.12 scale-in | 0.12→0.82 visible | 0.82→1 fade-out
+            // ── POP: bounce spring + glow pulse ──────────────────────
+            } else if (style === 'pop') {
                 let alpha = 1, scale = 1;
-                if (t < 0.12) {
-                    const p = t / 0.12;
-                    // overshoot spring: ease-out back
-                    scale = 0.5 + 0.6 * p * (2.2 - p);
-                    alpha = p;
-                } else if (t > 0.82) {
-                    alpha = 1 - (t - 0.82) / 0.18;
+                if (t < 0.13) {
+                    const p = t/0.13;
+                    scale = 0.3 + 0.85*p*(2.3-p);
+                    alpha = easeOut(p);
+                } else if (t > 0.78) {
+                    const p = (t-0.78)/0.22;
+                    alpha = 1 - easeIn(p);
+                    scale = 1 + 0.1*easeIn(p);
                 }
+                // glow pulse in hold phase
+                const glowPulse = (t >= 0.13 && t <= 0.78)
+                    ? 4 + 4*Math.sin((t-0.13)*Math.PI*2.5/(0.65))
+                    : 4;
+                const tw = ctx.measureText(sample).width;
+                const tx = Math.max(6,(W-tw)/2), ty = H-9;
                 ctx.save();
-                ctx.translate(W/2, ty);
-                ctx.scale(scale, scale);
-                ctx.translate(-W/2, -ty);
-                drawText(alpha, tx, ty, tw);
+                ctx.translate(W/2, ty); ctx.scale(scale,scale); ctx.translate(-W/2,-ty);
+                ctx.globalAlpha = alpha;
+                if (s.outline > 0) {
+                    ctx.strokeStyle='rgba(0,0,0,0.9)'; ctx.lineWidth=s.outline*1.5;
+                    ctx.lineJoin='round'; ctx.font=font(); ctx.strokeText(sample,tx,ty);
+                }
+                ctx.shadowColor=s.color; ctx.shadowBlur=glowPulse;
+                ctx.fillStyle=s.color; ctx.font=font(); ctx.fillText(sample,tx,ty);
+                ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+                ctx.globalAlpha=1;
                 ctx.restore();
 
-            } else if (s.anim === 'flash') {
-                // Near-instant appear, then hold
-                let alpha = 1;
-                if (t < 0.04)       alpha = t / 0.04;
-                else if (t > 0.88)  alpha = 1 - (t - 0.88) / 0.12;
-                drawText(alpha, tx, ty, tw);
-
-            } else if (s.anim === 'fade_slow') {
-                // Slow fade in/out
-                let alpha = 1;
-                if (t < 0.20)       alpha = t / 0.20;
-                else if (t > 0.75)  alpha = 1 - (t - 0.75) / 0.25;
-                drawText(alpha, tx, ty, tw);
-
             } else {
-                // 'fade' — standard fade in/out
-                let alpha = 1;
-                if (t < 0.12)       alpha = t / 0.12;
-                else if (t > 0.80)  alpha = 1 - (t - 0.80) / 0.20;
-                drawText(alpha, tx, ty, tw);
+                drawCore(1);
             }
 
             this._previewRaf = requestAnimationFrame(frame);
