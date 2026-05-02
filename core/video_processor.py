@@ -62,8 +62,9 @@ _MIN_AUDIO_DURATION = 1.0
 class RenderConfig:
     """All settings for a single render pipeline run."""
     image_folder:        str
-    audio_folder:        str
     output_folder:       str
+    audio_folder:        str   = ""        # folder with one audio file per image (stem-matched)
+    single_audio_file:   str | None = None # OR one audio file for the entire slideshow
     project_name:        str   = "output"
     resolution:          str   = DEFAULT_RESOLUTION
     fps:                 int   = DEFAULT_FPS
@@ -283,6 +284,12 @@ class VideoProcessor:
     # ── Phase 0: prepare ─────────────────────────────────────────────────
 
     def prepare(self) -> dict:
+        if self.config.single_audio_file:
+            return self._prepare_single_audio()
+        return self._prepare_folder_audio()
+
+    def _prepare_folder_audio(self) -> dict:
+        """Original prepare path: one audio file per image, matched by stem."""
         self._log("Phase 0: Validating inputs…")
         val = SystemValidator().run_all(
             self.config.image_folder,
@@ -347,9 +354,133 @@ class VideoProcessor:
             "total_duration":  round(total_dur, 2),
             "estimated_size_mb": estimated_mb,
             "durations":       durations,
+            "single_audio_mode": False,
+        }
+
+    def _prepare_single_audio(self) -> dict:
+        """Single audio file mode — all images share one audio track, divided equally."""
+        self._log("Phase 0: Single-audio mode — validating inputs…")
+
+        val_ff = SystemValidator().check_ffmpeg()
+        if not val_ff["ok"]:
+            return {"ok": False, "error": f"FFmpeg: {val_ff['error']}"}
+
+        # Single-audio mode: accept any image filenames (no numbered naming required)
+        val_img = SystemValidator().check_folder_images_any(self.config.image_folder)
+        if not val_img["ok"]:
+            errs = val_img.get("errors") or ["unknown"]
+            return {"ok": False, "error": f"Images: {errs[0]}"}
+
+        audio_path = self.config.single_audio_file
+        if not audio_path or not os.path.isfile(audio_path):
+            return {"ok": False, "error": f"Audio file not found: {audio_path}"}
+
+        ext = os.path.splitext(audio_path)[1].lower()
+        if ext not in SUPPORTED_AUDIO_FORMATS:
+            return {"ok": False, "error": f"Unsupported audio format: {ext}"}
+
+        try:
+            audio_duration = self.audio_processor.get_audio_duration(audio_path)
+        except Exception as exc:
+            return {"ok": False, "error": f"Cannot probe audio duration: {exc}"}
+
+        if audio_duration <= 0:
+            return {"ok": False, "error": "Audio duration is 0 or invalid"}
+
+        images = sorted(
+            f for f in os.listdir(self.config.image_folder)
+            if os.path.splitext(f)[1].lower() in SUPPORTED_IMAGE_FORMATS
+        )
+        N = len(images)
+        if N == 0:
+            return {"ok": False, "error": "No images found in image folder"}
+
+        # Divide audio duration equally across all images.
+        # concat demuxer is used (no transitions) so total = N * per_seg = audio_duration exactly.
+        per_seg_duration = audio_duration / N
+
+        self.temp_dir = os.path.join(
+            self.config.output_folder, f"_temp_{uuid.uuid4().hex[:8]}"
+        )
+        os.makedirs(self.temp_dir, exist_ok=True)
+        os.makedirs(self.config.output_folder, exist_ok=True)
+
+        effect_list = self._build_effect_list(N)
+        segments = [
+            {
+                "index":    i,
+                "image":    os.path.join(self.config.image_folder, img),
+                "audio":    None,           # no per-segment audio
+                "output":   os.path.join(self.temp_dir, f"seg_{i:03d}.mp4"),
+                "effect":   effect_list[i],
+                "duration": per_seg_duration,
+            }
+            for i, img in enumerate(images)
+        ]
+
+        bitrate_mbps = _parse_bitrate_mbps(self.config.video_bitrate)
+        estimated_mb = round((bitrate_mbps * audio_duration) / 8 * 1.1, 2)
+
+        with self._progress_lock:
+            self.progress.total_segments  = N
+            self.progress.overall_progress = 0.05
+
+        self._log(
+            f"Single-audio: {N} images, audio={audio_duration:.3f}s, "
+            f"per_seg={per_seg_duration:.6f}s, est={estimated_mb}MB"
+        )
+        self._notify_progress()
+
+        return {
+            "ok":              True,
+            "segments":        segments,
+            "segment_count":   N,
+            "total_duration":  round(audio_duration, 2),
+            "estimated_size_mb": estimated_mb,
+            "durations":       {os.path.basename(audio_path): audio_duration},
+            "single_audio_mode": True,
         }
 
     # ── Phase 1a: single segment ─────────────────────────────────────────
+
+    def render_segment_image_only(
+        self,
+        segment_index: int,
+        image_path: str,
+        duration: float,
+        output_path: str,
+        effect_name: str,
+    ) -> dict:
+        """Render an image-only segment (no audio) for single-audio mode.
+        Duration is enforced exactly via -t; the caller guarantees
+        sum(durations) == audio_duration so the final mux is sample-accurate.
+        """
+        video_filter = self.effect_engine.get_effect(effect_name, duration, self.config.effect_speed)
+        preset = _QUALITY_PRESET.get(self.config.quality_preset, "medium")
+        crf    = _QUALITY_CRF.get(self.config.quality_preset, 23)
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-threads", "1",
+            "-loop", "1",
+            "-r", "1",
+            "-i", image_path,
+            "-filter_complex", video_filter,
+            "-map", "[out]",
+            "-c:v", self.config.video_codec,
+            "-preset", preset,
+            "-crf", str(crf),
+            "-pix_fmt", "yuv420p",
+            "-t", f"{duration:.6f}",
+            "-an",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+
+        result = self._run_ffmpeg(cmd, timeout=300)
+        if result["ok"]:
+            return {"ok": True, "path": output_path, "duration": duration, "error": ""}
+        return {"ok": False, "path": "", "duration": 0.0, "error": result["error"]}
 
     def render_segment(
         self,
@@ -464,15 +595,28 @@ class VideoProcessor:
 
             self._log(f"  [{idx+1}/{total}] {os.path.basename(seg['image'])} effect={seg['effect']}")
 
-            # First attempt
-            r = self.render_segment(idx, seg["image"], seg["audio"], seg["output"], seg["effect"])
-
-            # Retry once on non-skip failure
-            if not r.get("ok") and not r.get("skipped") and not self._cancel_event.is_set():
-                self._log(f"  [{idx+1}/{total}] failed ({r.get('error', '')[:80]}), retrying…", "warning")
-                if os.path.exists(seg["output"]):
-                    os.remove(seg["output"])
+            # Dispatch to the appropriate render method
+            if seg.get("audio") is None:
+                # Single-audio mode: image-only segment
+                r = self.render_segment_image_only(
+                    idx, seg["image"], seg["duration"], seg["output"], seg["effect"]
+                )
+                if not r.get("ok") and not self._cancel_event.is_set():
+                    self._log(f"  [{idx+1}/{total}] failed ({r.get('error', '')[:80]}), retrying…", "warning")
+                    if os.path.exists(seg["output"]):
+                        os.remove(seg["output"])
+                    r = self.render_segment_image_only(
+                        idx, seg["image"], seg["duration"], seg["output"], seg["effect"]
+                    )
+            else:
+                # Folder-audio mode: image + matched audio
                 r = self.render_segment(idx, seg["image"], seg["audio"], seg["output"], seg["effect"])
+                # Retry once on non-skip failure
+                if not r.get("ok") and not r.get("skipped") and not self._cancel_event.is_set():
+                    self._log(f"  [{idx+1}/{total}] failed ({r.get('error', '')[:80]}), retrying…", "warning")
+                    if os.path.exists(seg["output"]):
+                        os.remove(seg["output"])
+                    r = self.render_segment(idx, seg["image"], seg["audio"], seg["output"], seg["effect"])
 
             with self._progress_lock:
                 self.progress.completed_segments += 1
@@ -502,7 +646,7 @@ class VideoProcessor:
 
     # ── Phase 2: merge ────────────────────────────────────────────────────
 
-    def merge_segments(self, segment_files: list, output_path: str) -> dict:
+    def merge_segments(self, segment_files: list, output_path: str, force_concat: bool = False) -> dict:
         n = len(segment_files)
         self._log(f"Merging {n} segment(s) → {os.path.basename(output_path)}")
 
@@ -510,7 +654,8 @@ class VideoProcessor:
             shutil.copy2(segment_files[0], output_path)
             return {"ok": True, "path": output_path}
 
-        method = self.transition_engine.choose_method(n)
+        # force_concat=True is used by single-audio mode (no transitions, exact timing)
+        method = "concat_file" if force_concat else self.transition_engine.choose_method(n)
         if method == "xfade":
             cmd = self.transition_engine.build_concat_command(
                 segment_files, output_path,
@@ -527,6 +672,35 @@ class VideoProcessor:
             self._log(f"Merge complete ({method})")
         else:
             self._log(f"Merge failed: {result['error']}", "error")
+        result["path"] = output_path if result["ok"] else ""
+        return result
+
+    # ── Phase 2b: inject single audio ────────────────────────────────────
+
+    def _inject_single_audio(self, video_path: str, output_path: str) -> dict:
+        """Mux a video-only file with the configured single audio file.
+        Uses -shortest so the output is trimmed to whichever stream ends first
+        (they should be identical in duration given the exact per-segment split).
+        """
+        audio_path = self.config.single_audio_file
+        self._log(f"Injecting audio: {os.path.basename(audio_path)}")
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-i", audio_path,
+            "-map", "0:v",
+            "-map", "1:a",
+            "-c:v", "copy",
+            "-c:a", self.config.audio_codec,
+            "-b:a", self.config.audio_bitrate,
+            "-shortest",
+            output_path,
+        ]
+        result = self._run_ffmpeg(cmd, timeout=1800)
+        if result["ok"]:
+            self._log("Audio injection complete")
+        else:
+            self._log(f"Audio injection failed: {result['error']}", "error")
         result["path"] = output_path if result["ok"] else ""
         return result
 
@@ -759,12 +933,26 @@ class VideoProcessor:
         self.progress.overall_progress = 0.75
         self._notify_progress()
 
+        single_audio = bool(self.config.single_audio_file)
         merged_path  = os.path.join(self.temp_dir, "merged.mp4")
-        merge_result = self.merge_segments(ok_segments, merged_path)
+        # Single-audio segments are video-only; force concat (no transitions) so
+        # total duration equals exactly the audio duration.
+        merge_result = self.merge_segments(ok_segments, merged_path, force_concat=single_audio)
         if not merge_result["ok"]:
             return self._fail(f"Merge failed: {merge_result.get('error')}")
 
         current = merged_path
+
+        # Phase 2b: inject single audio track
+        if single_audio:
+            self.progress.overall_progress = 0.78
+            self._notify_progress()
+            injected_path = os.path.join(self.temp_dir, "audio_injected.mp4")
+            inject_result = self._inject_single_audio(current, injected_path)
+            if not inject_result["ok"]:
+                return self._fail(f"Audio injection failed: {inject_result.get('error')}")
+            current = injected_path
+
         if self._cancel_event.is_set():
             return self._cancel()
 

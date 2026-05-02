@@ -78,9 +78,16 @@ def _api_error(message: str, detail: str = "", status: int = 400):
 def _dict_to_config(data: dict) -> RenderConfig:
     """Convert a JSON dict to RenderConfig, ignoring unknown keys."""
     filtered = {k: v for k, v in data.items() if k in _CONFIG_FIELDS and v is not None}
-    for req in ("image_folder", "audio_folder", "output_folder"):
+    for req in ("image_folder", "output_folder"):
         if req not in filtered:
             raise ValueError(f"Missing required field: {req}")
+    # Either audio_folder or single_audio_file must be supplied
+    has_folder = bool(filtered.get("audio_folder", "").strip())
+    has_file   = bool(filtered.get("single_audio_file", "").strip())
+    if not has_folder and not has_file:
+        raise ValueError("Either audio_folder or single_audio_file is required")
+    # Ensure audio_folder has a value (empty string is fine when using single_audio_file)
+    filtered.setdefault("audio_folder", "")
     return RenderConfig(**filtered)
 
 
@@ -127,14 +134,20 @@ def static_files(filename):
 def api_validate():
     try:
         data = request.json or {}
-        image_folder  = data.get("image_folder", "")
-        audio_folder  = data.get("audio_folder", "")
-        output_folder = data.get("output_folder", "")
+        image_folder      = data.get("image_folder", "").strip()
+        audio_folder      = data.get("audio_folder", "").strip()
+        single_audio_file = data.get("single_audio_file", "").strip()
+        output_folder     = data.get("output_folder", "").strip()
 
-        if not all([image_folder, audio_folder, output_folder]):
-            return _api_error("image_folder, audio_folder, output_folder are required")
+        if not image_folder or not output_folder:
+            return _api_error("image_folder and output_folder are required")
+        if not audio_folder and not single_audio_file:
+            return _api_error("Either audio_folder or single_audio_file is required")
 
-        result = _validator.run_all(image_folder, audio_folder, output_folder)
+        if single_audio_file:
+            result = _validator.run_all_single_audio(image_folder, single_audio_file, output_folder)
+        else:
+            result = _validator.run_all(image_folder, audio_folder, output_folder)
         return jsonify(result)
     except Exception as exc:
         return _api_error("Validation failed", str(exc), 500)
@@ -466,6 +479,37 @@ def audio_analyze():
         return _api_error("Audio analysis failed", str(exc), 500)
 
 
+# ── /api/audio/file/analyze ──────────────────────────────────────────────────
+
+@app.route("/api/audio/file/analyze", methods=["POST"])
+def audio_file_analyze():
+    """Return duration info for a single audio file (for single-audio mode)."""
+    from core.audio_processor import AudioProcessor
+    from config import SUPPORTED_AUDIO_FORMATS as _SAF
+    try:
+        path = (request.json or {}).get("path", "").strip()
+        if not path:
+            return _api_error("path là bắt buộc")
+        if not os.path.isfile(path):
+            return _api_error(f"File không tồn tại: {path}")
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in _SAF:
+            return _api_error(f"Định dạng không được hỗ trợ: {ext}. Hỗ trợ: {list(_SAF)}")
+
+        ap = AudioProcessor()
+        duration = ap.get_audio_duration(path)
+        if duration <= 0:
+            return _api_error("Không thể đọc thời lượng audio")
+
+        return jsonify({
+            "ok":       True,
+            "duration": round(duration, 3),
+            "filename": os.path.basename(path),
+        })
+    except Exception as exc:
+        return _api_error("Audio file analysis failed", str(exc), 500)
+
+
 # ── /api/validate/folder (single-folder lightweight check) ───────────────────
 
 @app.route("/api/validate/folder", methods=["POST"])
@@ -669,19 +713,44 @@ def subtitle_generate():
         return segs
 
     try:
-        data          = request.json or {}
-        audio_folder  = (data.get("audio_folder")  or "").strip()
-        output_folder = (data.get("output_folder") or "").strip()
-        language      = data.get("language") or None
-        model_size    = data.get("model_size", "base")
+        from config import SUPPORTED_AUDIO_FORMATS
+        from core.audio_processor import AudioProcessor
 
-        if not audio_folder or not os.path.isdir(audio_folder):
-            return _api_error("audio_folder không hợp lệ")
+        data              = request.json or {}
+        audio_folder      = (data.get("audio_folder")      or "").strip()
+        single_audio_file = (data.get("single_audio_file") or "").strip()
+        output_folder     = (data.get("output_folder")     or "").strip()
+        language          = data.get("language") or None
+        model_size        = data.get("model_size", "base")
+
         if not output_folder:
             return _api_error("output_folder là bắt buộc")
         os.makedirs(output_folder, exist_ok=True)
 
-        # Use cached model (preloaded by /api/system/init); load on-demand if not cached
+        # ── Build list of audio file paths depending on mode ──────────────
+        if single_audio_file:
+            # Single-audio-file mode: transcribe one file
+            if not os.path.isfile(single_audio_file):
+                return _api_error(f"File audio không tồn tại: {single_audio_file}")
+            ext = os.path.splitext(single_audio_file)[1].lower()
+            if ext not in SUPPORTED_AUDIO_FORMATS:
+                return _api_error(f"Định dạng không được hỗ trợ: {ext}")
+            audio_fpaths = [single_audio_file]
+        elif audio_folder:
+            # Folder mode: transcribe every audio file in the folder (sorted)
+            if not os.path.isdir(audio_folder):
+                return _api_error("audio_folder không hợp lệ")
+            audio_fpaths = sorted(
+                os.path.join(audio_folder, f)
+                for f in os.listdir(audio_folder)
+                if os.path.splitext(f)[1].lower() in SUPPORTED_AUDIO_FORMATS
+            )
+            if not audio_fpaths:
+                return _api_error("Không tìm thấy file audio trong thư mục")
+        else:
+            return _api_error("audio_folder hoặc single_audio_file là bắt buộc")
+
+        # ── Load / reuse Whisper model ─────────────────────────────────────
         backend, model = _load_whisper_model(model_size)
         if backend is None:
             return _api_error(
@@ -690,23 +759,13 @@ def subtitle_generate():
                 status=500,
             )
 
-        from config import SUPPORTED_AUDIO_FORMATS
-        from core.audio_processor import AudioProcessor
-
-        audio_files = sorted(
-            f for f in os.listdir(audio_folder)
-            if os.path.splitext(f)[1].lower() in SUPPORTED_AUDIO_FORMATS
-        )
-        if not audio_files:
-            return _api_error("Không tìm thấy file audio trong thư mục")
-
+        # ── Transcribe ────────────────────────────────────────────────────
         ap     = AudioProcessor()
         blocks: list[str] = []
         idx    = 1
         offset = 0.0
 
-        for fname in audio_files:
-            fpath = os.path.join(audio_folder, fname)
+        for fpath in audio_fpaths:
             try:
                 dur = ap.get_audio_duration(fpath)
             except Exception:

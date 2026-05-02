@@ -250,6 +250,7 @@ const FilePicker = (() => {
     let _targetField = null;
     let _allowedExts  = [];
     let _currentDir   = '';
+    let _onSelect     = null;   // optional callback(path) fired when a file is chosen
 
     const ICON_FOLDER = `<svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:var(--accent-light);flex-shrink:0"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
     const ICON_FILE   = `<svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:var(--text-secondary);flex-shrink:0"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`;
@@ -324,6 +325,7 @@ const FilePicker = (() => {
                     const label = $('file-selected-path');
                     if (label) label.textContent = item.name;
                     _close();
+                    if (_onSelect) _onSelect(item.path);
                 };
             }
             list.appendChild(el);
@@ -336,16 +338,21 @@ const FilePicker = (() => {
     }
 
     return {
-        open(fieldId, exts) {
+        open(fieldId, exts, onSelect) {
             _targetField  = fieldId;
             _allowedExts  = exts || [];
+            _onSelect     = onSelect || null;
             const existing = $(fieldId)?.value?.trim() || '';
             const startDir  = existing.includes('/') || existing.includes('\\')
                 ? existing.substring(0, Math.max(existing.lastIndexOf('/'), existing.lastIndexOf('\\')))
                 : '';
             _load(startDir || '');
             const title = $('file-modal-title');
-            if (title) title.textContent = exts?.includes('.srt') ? 'Chọn file SRT' : 'Chọn file video';
+            if (title) {
+                if (exts?.includes('.srt'))              title.textContent = 'Chọn file SRT';
+                else if (exts?.some(e => ['.mp3','.wav','.m4a'].includes(e))) title.textContent = 'Chọn file Audio';
+                else                                     title.textContent = 'Chọn file video';
+            }
             const m = $('file-modal-backdrop');
             if (m) m.classList.remove('hidden');
         },
@@ -469,6 +476,7 @@ const FolderPicker = (() => {
             if      (_targetField === 'image-folder')  App.onImageFolderChange();
             else if (_targetField === 'audio-folder')  App.onAudioFolderChange();
             else                                       App.validateFolders();
+            // Note: 'audio-file' uses FilePicker (not FolderPicker), handled separately
         },
 
         close() {
@@ -481,15 +489,27 @@ const FolderPicker = (() => {
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 let _valTimer = null;
+function _isFileMode() {
+    return $('audio-mode-file')?.classList.contains('active') ?? false;
+}
 async function _runValidate() {
-    const img = $('image-folder')?.value || '';
-    const aud = $('audio-folder')?.value  || '';
-    const out = $('output-folder')?.value || '';
-    if (!img || !aud || !out) return;
+    const img  = $('image-folder')?.value?.trim() || '';
+    const out  = $('output-folder')?.value?.trim() || '';
+    if (!img || !out) return;
+
+    const fileMode = _isFileMode();
+    const aud  = fileMode ? '' : ($('audio-folder')?.value?.trim() || '');
+    const saf  = fileMode ? ($('audio-file')?.value?.trim()  || '') : '';
+    if (!aud && !saf) return;
+
     try {
+        const body = { image_folder: img, output_folder: out };
+        if (fileMode) body.single_audio_file = saf;
+        else          body.audio_folder       = aud;
+
         const d = await fetch('/api/validate', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ image_folder: img, audio_folder: aud, output_folder: out }),
+            body: JSON.stringify(body),
         }).then(r => r.json());
         const ok = d.passed ?? false;
         const btn = $('btn-render');
@@ -663,10 +683,84 @@ const App = {
     selectCurrentFolder() { FolderPicker.confirm(); },
 
     // ── File browsing (intro/outro/srt) ──────────────────────
-    browseFile(fieldId, exts) { FilePicker.open(fieldId, exts || []); },
+    browseFile(fieldId, exts, onSelect) { FilePicker.open(fieldId, exts || [], onSelect); },
     closeFileModal()  { FilePicker.close(); },
     browseSRT()       { FilePicker.open('srt-path', ['.srt']); },
     browseVideo(fieldId) { FilePicker.open(fieldId, ['.mp4','.avi','.mov','.mkv']); },
+
+    // ── Audio mode (folder vs single file) ───────────────────
+    setAudioMode(mode) {
+        const folderWrap = $('audio-folder-wrap');
+        const fileWrap   = $('audio-file-wrap');
+        const folderBtn  = $('audio-mode-folder');
+        const fileBtn    = $('audio-mode-file');
+        const msgEl      = $('aud-folder-msg');
+
+        const isFile = (mode === 'file');
+        if (folderWrap) folderWrap.classList.toggle('hidden', isFile);
+        if (fileWrap)   fileWrap.classList.toggle('hidden', !isFile);
+        if (folderBtn)  folderBtn.classList.toggle('active', !isFile);
+        if (fileBtn)    fileBtn.classList.toggle('active', isFile);
+        if (msgEl) { msgEl.innerHTML = ''; msgEl.className = 'folder-msg'; }
+
+        // Reset stat cards and render button
+        setText('card-duration', '—');
+        setText('card-segments', '—');
+        setText('card-size', '—');
+        const btn = $('btn-render');
+        if (btn) btn.classList.add('disabled');
+
+        // Trigger re-validation for the newly visible mode
+        if (!isFile && $('audio-folder')?.value?.trim()) this.onAudioFolderChange();
+        if ( isFile && $('audio-file')?.value?.trim())   this.onSingleAudioFileChange();
+    },
+
+    browseAudioFile() {
+        FilePicker.open('audio-file', ['.mp3', '.wav', '.m4a'], () => App.onSingleAudioFileChange());
+    },
+
+    async onSingleAudioFileChange() {
+        this.validateFolders();
+        const path    = $('audio-file')?.value?.trim() || '';
+        const imgPath = $('image-folder')?.value?.trim() || '';
+        const msg     = $('aud-folder-msg');
+        const _set    = (t, c) => { if (msg) { msg.innerHTML = t; msg.className = `folder-msg ${c}`; } };
+
+        if (!path) { _set('', ''); return; }
+        _set('⏳ Đang phân tích audio…', '');
+        try {
+            const d = await fetch('/api/audio/file/analyze', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            }).then(r => r.json());
+
+            if (d.error || !d.ok) { _set(`❌ ${d.error || 'Không đọc được file'}`, 'err'); return; }
+
+            const durStr = _fmtDur(d.duration);
+            setText('card-duration', durStr);
+
+            if (imgPath) {
+                const di = await fetch('/api/validate/folder', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: imgPath, type: 'image' }),
+                }).then(r => r.json());
+
+                const imgCnt = di.ok ? (di.count ?? 0) : 0;
+                if (imgCnt > 0) {
+                    const perImg = (d.duration / imgCnt).toFixed(2);
+                    _set(
+                        `✅ <strong>${d.filename}</strong> · ⏱ ${durStr} · ${imgCnt} ảnh · <em>${perImg}s/ảnh</em>`,
+                        'ok'
+                    );
+                    setText('card-segments', imgCnt);
+                } else {
+                    _set(`✅ <strong>${d.filename}</strong> · ⏱ ${durStr}`, 'ok');
+                }
+            } else {
+                _set(`✅ <strong>${d.filename}</strong> · ⏱ ${durStr}`, 'ok');
+            }
+        } catch { _set('❌ Lỗi kết nối', 'err'); }
+    },
 
     // ── Image folder change ───────────────────────────────────
     async onImageFolderChange() {
@@ -696,9 +790,13 @@ const App = {
                 _set(`❌ ${(d.errors||[])[0] || 'Không tìm thấy ảnh (.jpg .png .webp)'}`, 'err');
             }
 
-            // If audio already selected, re-run cross-check to update matched count
-            if (d.ok && cnt > 0 && $('audio-folder')?.value?.trim()) {
-                this.onAudioFolderChange();
+            // Re-run audio validation to update matched count / per-image timing
+            if (d.ok && cnt > 0) {
+                if (_isFileMode()) {
+                    if ($('audio-file')?.value?.trim()) this.onSingleAudioFileChange();
+                } else {
+                    if ($('audio-folder')?.value?.trim()) this.onAudioFolderChange();
+                }
             }
         } catch { _set('❌ Lỗi kết nối', 'err'); }
     },
@@ -779,10 +877,15 @@ const App = {
         const subLanguage    = $('sub-language')?.value || 'auto';
         let   srtPath        = $('srt-path')?.value?.trim() || '';
 
+        const fileMode        = _isFileMode();
+        const audioFolderVal  = fileMode ? '' : ($('audio-folder')?.value?.trim()  || '');
+        const singleAudioVal  = fileMode ? ($('audio-file')?.value?.trim() || '') : null;
+
         const cfg = {
-            image_folder:       $('image-folder')?.value  || '',
-            audio_folder:       $('audio-folder')?.value   || '',
-            output_folder:      $('output-folder')?.value  || '',
+            image_folder:       $('image-folder')?.value?.trim()  || '',
+            audio_folder:       audioFolderVal,
+            single_audio_file:  singleAudioVal,
+            output_folder:      $('output-folder')?.value?.trim()  || '',
             project_name:       $('project-name')?.value   || 'output',
             resolution:         $('resolution')?.value     || '1920x1080',
             fps:                parseInt($('fps')?.value)   || 60,
@@ -805,8 +908,9 @@ const App = {
             audio_bitrate:      $('audio-bitrate')?.value  || '192k',
         };
 
-        if (!cfg.image_folder || !cfg.audio_folder || !cfg.output_folder) {
-            toast('Vui lòng chọn đủ 3 thư mục trước khi render.', 'warning');
+        const audioOk = fileMode ? !!cfg.single_audio_file : !!cfg.audio_folder;
+        if (!cfg.image_folder || !audioOk || !cfg.output_folder) {
+            toast('Vui lòng chọn đủ thư mục ảnh, audio và thư mục xuất trước khi render.', 'warning');
             return;
         }
 
@@ -819,10 +923,10 @@ const App = {
                 }
                 cfg.subtitle_srt_path = srtPath;
             } else {
-                // source = 'auto': generate SRT from audio if not yet done
+                // source = 'auto': generate SRT from audio source (folder or single file)
                 if (!srtPath) {
                     toast('Đang tạo phụ đề tự động từ audio…', 'info');
-                    srtPath = await this._generateSRTForRender(cfg.audio_folder, cfg.output_folder, subLanguage);
+                    srtPath = await this._generateSRTForRender(cfg.output_folder, subLanguage);
                     if (!srtPath) return; // error already toasted
                 }
                 cfg.subtitle_srt_path = srtPath;
@@ -924,10 +1028,12 @@ const App = {
     resetSettings() {
         if (this._previewRaf) { cancelAnimationFrame(this._previewRaf); this._previewRaf = null; }
         const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
-        // Folders
+        // Folders & audio mode
         setVal('image-folder',  '');
         setVal('audio-folder',  '');
+        setVal('audio-file',    '');
         setVal('output-folder', 'D:/');
+        this.setAudioMode('folder');
         setVal('project-name',  '');
         // Project / export
         setVal('resolution', '1920x1080');
@@ -1392,16 +1498,34 @@ const App = {
         this._previewRaf = requestAnimationFrame(frame);
     },
 
+    // ── Build subtitle API payload based on current audio mode ──
+    _buildSubtitlePayload(outputFolder, language) {
+        const payload = { output_folder: outputFolder, language };
+        if (_isFileMode()) {
+            payload.single_audio_file = $('audio-file')?.value?.trim() || '';
+        } else {
+            payload.audio_folder = $('audio-folder')?.value?.trim() || '';
+        }
+        return payload;
+    },
+
+    _hasAudioSource() {
+        return _isFileMode()
+            ? !!($('audio-file')?.value?.trim())
+            : !!($('audio-folder')?.value?.trim());
+    },
+
     // ── Internal helper: generate SRT and return the path (used by startRender) ──
-    async _generateSRTForRender(audioFolder, outputFolder, language) {
+    async _generateSRTForRender(outputFolder, language) {
         const btn    = $('btn-generate-sub');
         const status = $('sub-gen-status');
         if (btn) { btn.textContent = 'Đang phân tích…'; btn.classList.add('disabled'); }
         if (status) status.textContent = '⏳ Đang chạy Whisper…';
         try {
+            const payload = this._buildSubtitlePayload(outputFolder, language);
             const d = await fetch('/api/subtitle/generate', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audio_folder: audioFolder, output_folder: outputFolder, language }),
+                body: JSON.stringify(payload),
             }).then(r => r.json());
             if (d.error) {
                 toast((d.error || '') + (d.detail ? ' — ' + d.detail : ''), 'error');
@@ -1416,16 +1540,23 @@ const App = {
             if (status) status.textContent = '❌ Lỗi kết nối';
             return null;
         } finally {
-            if (btn) { btn.textContent = '🎙️ Phân tích giọng nói'; btn.classList.remove('disabled'); }
+            if (btn) { btn.textContent = 'Phân tích giọng nói'; btn.classList.remove('disabled'); }
         }
     },
 
     // ── Whisper auto-generate ─────────────────────────────────
     async generateSubtitle() {
-        const audioFolder  = $('audio-folder')?.value  || '';
-        const outputFolder = $('output-folder')?.value || '';
+        const outputFolder = $('output-folder')?.value?.trim() || '';
         const language     = $('sub-language')?.value  || 'auto';
-        if (!audioFolder || !outputFolder) { toast('Cần chọn thư mục audio và thư mục xuất.', 'warning'); return; }
+
+        if (!this._hasAudioSource()) {
+            toast(
+                'Cần chọn ' + (_isFileMode() ? 'file audio (File đơn)' : 'thư mục audio') + ' trước.',
+                'warning'
+            );
+            return;
+        }
+        if (!outputFolder) { toast('Cần chọn thư mục xuất.', 'warning'); return; }
 
         const btn    = $('btn-generate-sub');
         const status = $('sub-gen-status');
@@ -1433,9 +1564,10 @@ const App = {
         if (status) status.textContent = '⏳ Đang chạy Whisper…';
 
         try {
+            const payload = this._buildSubtitlePayload(outputFolder, language);
             const d = await fetch('/api/subtitle/generate', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audio_folder: audioFolder, output_folder: outputFolder, language }),
+                body: JSON.stringify(payload),
             }).then(r => r.json());
 
             if (d.error) {
@@ -1451,7 +1583,7 @@ const App = {
             toast('Lỗi: ' + e.message, 'error');
             if (status) status.textContent = '❌ Lỗi kết nối';
         } finally {
-            if (btn) { btn.textContent = '🎙️ Phân tích giọng nói'; btn.classList.remove('disabled'); }
+            if (btn) { btn.textContent = 'Phân tích giọng nói'; btn.classList.remove('disabled'); }
         }
     },
 

@@ -1,11 +1,11 @@
 """
 core/effect_engine.py — Fast animated Ken Burns effects for still images.
 
-Design philosophy (performance-first):
-  • Every effect = ONE zoompan filter on letterboxed input → [out].
-  • No split, no overlay, no gblur, no scale=eval=frame.
-  • zoompan's z/x/y expressions use the built-in frame counter `n`.
-  • Expected render speed: 3-10× real-time per segment (vs. 0.02× before).
+Design (performance-first):
+  • Background: cover-scale + gblur on 1-fps input stream (cost = 1 op/sec).
+  • Foreground: contain-scale overlaid centred on blurred background.
+  • zoompan animates the composite at target fps.
+  • zoompan's z/x/y expressions use the built-in frame counter `on`.
 
 Output: 1920×1080, yuv420p, map label [out].
 """
@@ -49,24 +49,42 @@ class EffectEngine:
         total_frames: int,
         fps: int = DEFAULT_FPS,
     ) -> str:
-        """
-        Single-pass filter chain:
-          scale+pad (letterbox to 1920×1080)
-          → zoompan (Ken Burns animation via n-based expressions)
-          → format=yuv420p
-          → [out]
+        """Blur-fill letterbox + Ken Burns animation.
 
-        FFmpeg 8.x broke the `z` variable inside x/y expressions (it evaluates
-        to 0 on frame 0, causing division-by-zero and a silent crash).  Fix:
-        substitute the zoom expression literally wherever x/y reference `/z`.
+        ① Split 1-fps input → bg copy + fg copy
+        ② bg:  cover-scale → center-crop → strong blur  (fills the frame)
+        ③ fg:  contain-scale (preserves aspect ratio)
+        ④ Overlay fg centred on blurred bg
+        ⑤ zoompan animates the composite
+
+        The blur runs on the 1-fps input stream, so the cost is trivial.
+        After the overlay the composite is exactly _W×_H, so all existing
+        zoompan x/y expressions remain valid unchanged.
+
+        FFmpeg 8.x: `z` evaluates to 0 on frame 0 inside x/y — substitute
+        the zoom expression literally wherever x/y reference `/z`.
         """
         z_sub = f"({z_expr})"
         safe_x = x_expr.replace("/z", f"/{z_sub}")
         safe_y = y_expr.replace("/z", f"/{z_sub}")
         return (
-            f"[0:v]"
-            f"scale={_W}:{_H}:force_original_aspect_ratio=decrease:flags=lanczos,"
-            f"pad={_W}:{_H}:(ow-iw)/2:(oh-ih)/2:color=black,"
+            # ① split
+            f"[0:v]split=2[_bg][_fg];"
+            # ② background: cover → crop → blur
+            f"[_bg]"
+            f"scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={_W}:{_H},"
+            f"gblur=sigma=30"
+            f"[_blurbg];"
+            # ③ foreground: contain-scale (aspect-ratio-correct, no black bars)
+            f"[_fg]"
+            f"scale={_W}:{_H}:force_original_aspect_ratio=decrease:flags=lanczos"
+            f"[_fgfit];"
+            # ④ overlay fg centred on blurred bg
+            f"[_blurbg][_fgfit]overlay=(W-w)/2:(H-h)/2"
+            f"[_composite];"
+            # ⑤ Ken Burns animation on composite
+            f"[_composite]"
             f"zoompan="
             f"z='{z_expr}':x='{safe_x}':y='{safe_y}':"
             f"d={total_frames}:s={_W}x{_H}:fps={fps},"

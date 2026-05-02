@@ -48,6 +48,30 @@ class SystemValidator:
     def check_folder_images(self, folder_path: str) -> dict:
         return self._check_folder(folder_path, SUPPORTED_IMAGE_FORMATS)
 
+    def check_folder_images_any(self, folder_path: str) -> dict:
+        """Like check_folder_images but accepts any filename (no 001/002 requirement).
+        Used for single-audio mode where naming convention is not needed.
+        """
+        result = {"ok": False, "files": [], "count": 0, "errors": []}
+        try:
+            if not os.path.isdir(folder_path):
+                result["errors"].append(f"Folder not found: {folder_path}")
+                return result
+            files = sorted(
+                f for f in os.listdir(folder_path)
+                if os.path.splitext(f)[1].lower() in SUPPORTED_IMAGE_FORMATS
+            )
+            result["files"] = files
+            result["count"] = len(files)
+            result["ok"] = len(files) > 0
+            if len(files) == 0:
+                result["errors"].append("Không tìm thấy ảnh (.jpg .jpeg .png .webp)")
+        except PermissionError as e:
+            result["errors"].append(f"Permission denied: {e}")
+        except Exception as e:
+            result["errors"].append(str(e))
+        return result
+
     def check_folder_audio(self, folder_path: str) -> dict:
         return self._check_folder(folder_path, SUPPORTED_AUDIO_FORMATS)
 
@@ -106,6 +130,68 @@ class SystemValidator:
         except Exception as e:
             result["unmatched_images"] = [str(e)]
         return result
+
+    def check_single_audio_file(self, audio_path: str) -> dict:
+        """Validate a single audio file: exists, supported format, non-zero duration."""
+        result = {"ok": False, "duration": 0.0, "errors": []}
+        try:
+            if not os.path.isfile(audio_path):
+                result["errors"].append(f"File not found: {audio_path}")
+                return result
+
+            ext = os.path.splitext(audio_path)[1].lower()
+            if ext not in SUPPORTED_AUDIO_FORMATS:
+                result["errors"].append(
+                    f"Unsupported format: {ext}. Supported: {list(SUPPORTED_AUDIO_FORMATS)}"
+                )
+                return result
+
+            proc = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", audio_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            dur = float(proc.stdout.strip())
+            if dur <= 0:
+                result["errors"].append("Audio duration is 0 or invalid")
+                return result
+            result["duration"] = round(dur, 3)
+            result["ok"] = True
+        except ValueError:
+            result["errors"].append("Cannot parse audio duration from ffprobe output")
+        except FileNotFoundError:
+            result["errors"].append("ffprobe not found — FFmpeg must be installed")
+        except Exception as exc:
+            result["errors"].append(str(exc))
+        return result
+
+    def run_all_single_audio(
+        self, image_folder: str, single_audio_file: str, output_folder: str
+    ) -> dict:
+        """Validate inputs for single-audio-file mode."""
+        ffmpeg = self.check_ffmpeg()
+        # Single-audio mode accepts any image filename (no 001/002 naming required)
+        images = self.check_folder_images_any(image_folder)
+        audio  = self.check_single_audio_file(single_audio_file)
+
+        img_count = images.get("count", 0)
+        estimated_mb = self.estimate_output_size(
+            image_count=img_count,
+            avg_audio_duration=audio["duration"] / max(img_count, 1),
+            bitrate_mbps=8.0,
+        )
+        disk = self.check_disk_space(output_folder, estimated_mb)
+
+        passed = all([ffmpeg["ok"], images["ok"], audio["ok"], disk["ok"]])
+        return {
+            "passed": passed,
+            "ffmpeg": ffmpeg,
+            "images": images,
+            "audio":  audio,
+            "disk":   disk,
+            "estimated_output_mb": estimated_mb,
+            "mode": "single_audio",
+        }
 
     def check_disk_space(self, output_folder: str, estimated_mb: float) -> dict:
         result = {"ok": False, "available_mb": 0.0, "required_mb": estimated_mb}

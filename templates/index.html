@@ -118,10 +118,24 @@
                   <div class="folder-msg" id="img-folder-msg"></div>
                 </div>
                 <div class="field-row">
-                  <label class="field-label">Audio</label>
-                  <div class="input-with-btn">
+                  <label class="field-label">
+                    Audio
+                    <span class="info-icon" data-tooltip="Thư mục: mỗi ảnh ghép với 1 file audio cùng tên (001.jpg ↔ 001.mp3). File đơn: 1 file audio chia đều cho tất cả ảnh, tổng thời lượng video = thời lượng audio.">i</span>
+                  </label>
+                  <!-- Mode toggle -->
+                  <div class="sub-source-row" style="margin-bottom:6px">
+                    <div class="sub-source-btn active" id="audio-mode-folder" onclick="App.setAudioMode('folder')">📁 Thư mục</div>
+                    <div class="sub-source-btn" id="audio-mode-file" onclick="App.setAudioMode('file')">🎵 File đơn</div>
+                  </div>
+                  <!-- Folder mode input -->
+                  <div id="audio-folder-wrap" class="input-with-btn">
                     <input type="text" class="field-input" id="audio-folder" placeholder="D:\manga\audio" oninput="App.onAudioFolderChange()">
                     <div class="btn-browse" onclick="App.browseFolder('audio-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
+                  </div>
+                  <!-- Single file mode input -->
+                  <div id="audio-file-wrap" class="input-with-btn hidden">
+                    <input type="text" class="field-input" id="audio-file" placeholder="D:\manga\audio.mp3" oninput="App.onSingleAudioFileChange()">
+                    <div class="btn-browse" onclick="App.browseAudioFile()"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
                   </div>
                   <div class="folder-msg" id="aud-folder-msg"></div>
                 </div>
