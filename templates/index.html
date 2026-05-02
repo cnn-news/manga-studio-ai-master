@@ -154,14 +154,30 @@
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
                 <span class="section-title">Hiệu Ứng Hình Ảnh</span>
-                <span class="toggle-label-sm">Ngẫu nhiên</span>
-                <label class="toggle-switch toggle-xs">
+                <span class="toggle-label-sm" id="effect-random-label">Ngẫu nhiên</span>
+                <label class="toggle-switch toggle-xs" id="effect-random-wrap">
                   <input type="checkbox" id="effect-random" checked onchange="App.toggleEffectRandom()">
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
                 </label>
               </div>
               <div class="section-body">
-                <!-- Effect picker — ẩn khi random=ON -->
+
+                <!-- Scroll mode toggle -->
+                <div class="field-row field-row-toggle">
+                  <label class="field-label">
+                    Cuộn dọc (Webtoon)
+                    <span class="info-icon" data-tooltip="Nối liền mạch tất cả ảnh thành dải dọc và tạo hiệu ứng cuộn từ trên xuống dưới — giống đọc webtoon. Khi bật: tắt hiệu ứng ngẫu nhiên &amp; chuyển cảnh.">i</span>
+                  </label>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="scroll-mode" onchange="App.toggleScrollMode()">
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+                <div id="scroll-mode-banner" class="hidden" style="padding:6px 10px;background:var(--bg-secondary);border-radius:var(--radius-md);border:1px solid var(--accent);font-size:.77rem;color:var(--accent-light);margin-bottom:6px;line-height:1.5">
+                  ↕ Ảnh được ghép dọc &amp; cuộn liên tục — hiệu ứng Ken Burns và chuyển cảnh bị tắt
+                </div>
+
+                <!-- Effect picker — ẩn khi random=ON hoặc scroll=ON -->
                 <div id="effect-selector" class="hidden">
                   <label class="field-label" style="margin-bottom:4px">Chọn hiệu ứng</label>
                   <div class="fx-grid">
@@ -172,7 +188,7 @@
                     <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
                   </div>
                 </div>
-                <div class="field-row">
+                <div id="effect-speed-row" class="field-row">
                   <label class="field-label">Tốc độ hiệu ứng</label>
                   <select class="field-select" id="effect-speed">
                     <option value="slow">Chậm</option>

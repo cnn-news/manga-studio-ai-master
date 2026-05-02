@@ -1,0 +1,54 @@
+=== Manga Studio AI — render session 20260503_021318 ===
+Job: N/A
+────────────────────────────────────────────────
+[02:13:18] [INFO   ] Pipeline started — project: test, hw_encoder: nvenc
+[02:13:18] [INFO   ] Phase 0: Single-audio mode — validating inputs…
+[02:13:18] [INFO   ] Single-audio: 104 images, audio=134.950s, per_seg=1.297596s, est=148.44MB
+[02:13:18] [INFO   ] Scroll mode: building continuous scroll video
+[02:13:18] [INFO   ] Scroll: probing 104 images...
+[02:13:21] [INFO   ] Scroll: strip 1920x319488px, range=318408px, dur=134.9s
+[02:13:21] [INFO   ] Scroll: pps=2359.45px/s, chunk_scroll=9848px
+[02:13:32] [INFO   ] Scroll: chunk 1 done  y=[0→9848]
+[02:13:41] [INFO   ] Scroll: chunk 2 done  y=[9848→19696]
+[02:13:50] [INFO   ] Scroll: chunk 3 done  y=[19696→29544]
+[02:13:59] [INFO   ] Scroll: chunk 4 done  y=[29544→39392]
+[02:14:11] [INFO   ] Scroll: chunk 5 done  y=[39392→49240]
+[02:14:20] [INFO   ] Scroll: chunk 6 done  y=[49240→59088]
+[02:14:29] [INFO   ] Scroll: chunk 7 done  y=[59088→68936]
+[02:14:39] [INFO   ] Scroll: chunk 8 done  y=[68936→78784]
+[02:14:49] [INFO   ] Scroll: chunk 9 done  y=[78784→88632]
+[02:15:00] [INFO   ] Scroll: chunk 10 done  y=[88632→98480]
+[02:15:10] [INFO   ] Scroll: chunk 11 done  y=[98480→108328]
+[02:15:19] [INFO   ] Scroll: chunk 12 done  y=[108328→118176]
+[02:15:29] [INFO   ] Scroll: chunk 13 done  y=[118176→128024]
+[02:15:40] [INFO   ] Scroll: chunk 14 done  y=[128024→137872]
+[02:15:51] [INFO   ] Scroll: chunk 15 done  y=[137872→147720]
+[02:16:01] [INFO   ] Scroll: chunk 16 done  y=[147720→157568]
+[02:16:10] [INFO   ] Scroll: chunk 17 done  y=[157568→167416]
+[02:16:21] [INFO   ] Scroll: chunk 18 done  y=[167416→177264]
+[02:16:32] [INFO   ] Scroll: chunk 19 done  y=[177264→187112]
+[02:16:42] [INFO   ] Scroll: chunk 20 done  y=[187112→196960]
+[02:16:50] [INFO   ] Scroll: chunk 21 done  y=[196960→206808]
+[02:16:59] [INFO   ] Scroll: chunk 22 done  y=[206808→216656]
+[02:17:10] [INFO   ] Scroll: chunk 23 done  y=[216656→226504]
+[02:17:20] [INFO   ] Scroll: chunk 24 done  y=[226504→236352]
+[02:17:31] [INFO   ] Scroll: chunk 25 done  y=[236352→246200]
+[02:17:40] [INFO   ] Scroll: chunk 26 done  y=[246200→256048]
+[02:17:49] [INFO   ] Scroll: chunk 27 done  y=[256048→265896]
+[02:18:00] [INFO   ] Scroll: chunk 28 done  y=[265896→275744]
+[02:18:11] [INFO   ] Scroll: chunk 29 done  y=[275744→285592]
+[02:18:23] [INFO   ] Scroll: chunk 30 done  y=[285592→295440]
+[02:18:31] [INFO   ] Scroll: chunk 31 done  y=[295440→305288]
+[02:18:41] [INFO   ] Scroll: chunk 32 done  y=[305288→315136]
+[02:18:43] [INFO   ] Scroll: chunk 33 done  y=[315136→318408]
+[02:18:43] [INFO   ] Scroll: joining 33 chunks...
+[02:18:44] [INFO   ] Scroll: muxing audio...
+[02:18:47] [INFO   ] Scroll render complete
+[02:18:47] [INFO   ] Burning subtitles (preset=karaoke)…
+[02:20:02] [INFO   ] Finalizing → test.mp4
+[02:20:02] [INFO   ] Finalize: using libx264 (software)
+[02:21:23] [INFO   ] Final output: 127.1 MB, 134.7s, encoded in 81.18s
+[02:21:23] [INFO   ] Cleaned temp: D:/_temp_be6ab303
+[02:21:23] [INFO   ] Pipeline complete → D:/test.mp4
+────────────────────────────────────────────────
+=== Session ended ===

@@ -863,11 +863,13 @@ const App = {
 
     // Render lifecycle
     async startRender() {
+        // Scroll mode overrides Ken Burns effects
+        const scrollMode    = $('scroll-mode')?.checked ?? false;
         // Effect mode
-        const effectRandom  = $('effect-random')?.checked ?? true;
+        const effectRandom  = scrollMode ? true : ($('effect-random')?.checked ?? true);
         const activeEffect  = document.querySelector('.fx-btn.active[data-effect]');
-        // Transition mode
-        const transRandom   = $('transition-random')?.checked ?? true;
+        // Transition mode (scroll mode ignores transitions)
+        const transRandom   = scrollMode ? true : ($('transition-random')?.checked ?? true);
         const activeTrans   = document.querySelector('.fx-btn.active[data-transition]');
         const transOptions  = ['fade_black','fade_white','cross_dissolve','slide_left','slide_right','zoom_transition'];
         // Subtitle
@@ -906,6 +908,7 @@ const App = {
             outro_path:         $('outro-path')?.value     || null,
             video_bitrate:      $('video-bitrate')?.value  || '8M',
             audio_bitrate:      $('audio-bitrate')?.value  || '192k',
+            scroll_mode:        scrollMode,
         };
 
         const audioOk = fileMode ? !!cfg.single_audio_file : !!cfg.audio_folder;
@@ -1039,6 +1042,9 @@ const App = {
         setVal('resolution', '1920x1080');
         setVal('fps', '60');
         setVal('quality', 'balanced');
+        // Scroll mode
+        const scrollMode = document.getElementById('scroll-mode');
+        if (scrollMode) { scrollMode.checked = false; this.toggleScrollMode(); }
         // Effect
         const effRandom = document.getElementById('effect-random');
         if (effRandom) { effRandom.checked = true; this.toggleEffectRandom(); }
@@ -1218,8 +1224,37 @@ const App = {
         } catch (e) { console.warn('loadHistory:', e.message); }
     },
 
+    // ── Scroll mode toggle ────────────────────────────────────
+    toggleScrollMode() {
+        const on = document.getElementById('scroll-mode')?.checked;
+        const banner = document.getElementById('scroll-mode-banner');
+        if (banner) banner.classList.toggle('hidden', !on);
+
+        // When scroll is ON: grey-out and lock the random-effect toggle
+        const effRandomInput = document.getElementById('effect-random');
+        const effRandomWrap  = document.getElementById('effect-random-wrap');
+        const effRandomLabel = document.getElementById('effect-random-label');
+        const effSpeedRow    = document.getElementById('effect-speed-row');
+
+        if (on) {
+            if (effRandomInput) { effRandomInput.checked = true; effRandomInput.disabled = true; }
+            if (effRandomWrap)  effRandomWrap.style.opacity  = '0.35';
+            if (effRandomLabel) effRandomLabel.style.opacity = '0.35';
+            if (effSpeedRow)    effSpeedRow.style.display    = 'none';
+            document.getElementById('effect-selector')?.classList.add('hidden');
+        } else {
+            if (effRandomInput) effRandomInput.disabled = false;
+            if (effRandomWrap)  effRandomWrap.style.opacity  = '';
+            if (effRandomLabel) effRandomLabel.style.opacity = '';
+            if (effSpeedRow)    effSpeedRow.style.display    = '';
+            this.toggleEffectRandom();
+        }
+    },
+
     // ── Effect toggle ──────────────────────────────────────────
     toggleEffectRandom() {
+        const scrollOn = document.getElementById('scroll-mode')?.checked;
+        if (scrollOn) return;  // scroll mode overrides effect selector visibility
         const on = document.getElementById('effect-random')?.checked;
         document.getElementById('effect-selector')?.classList.toggle('hidden', !!on);
     },

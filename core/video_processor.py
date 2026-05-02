@@ -92,6 +92,7 @@ class RenderConfig:
     intro_path:          str | None = None
     outro_path:          str | None = None
     max_workers:         int | None = None   # None → auto (cpu_count // 2)
+    scroll_mode:         bool = False        # stack images vertically, pan top→bottom
 
 
 @dataclass
@@ -644,6 +645,271 @@ class VideoProcessor:
 
         return results
 
+    # ── Scroll mode render ────────────────────────────────────────────────────
+
+    def _concat_segment_audio(self, segments: list) -> str | None:
+        """Concatenate per-segment audio files into one for scroll mode."""
+        audio_files = [seg["audio"] for seg in segments if seg.get("audio")]
+        if not audio_files:
+            return None
+        if len(audio_files) == 1:
+            return audio_files[0]
+
+        concat_list = os.path.join(self.temp_dir, "scroll_audio_list.txt")
+        with open(concat_list, "w", encoding="utf-8") as f:
+            for af in audio_files:
+                escaped = af.replace("'", "'\\''")
+                f.write(f"file '{escaped}'\n")
+
+        out_audio = os.path.join(self.temp_dir, "scroll_concat.aac")
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_list,
+            "-c:a", self.config.audio_codec,
+            "-b:a", self.config.audio_bitrate,
+            out_audio,
+        ]
+        result = self._run_ffmpeg(cmd, timeout=600)
+        if result["ok"]:
+            return out_audio
+        self._log(f"Audio concat warning: {result['error'][:120]}", "warning")
+        return None
+
+    def _probe_scaled_height(self, img_path: str, w_out: int, h_fallback: int) -> int:
+        """Return image height after scaling to w_out, keeping aspect ratio (even number)."""
+        try:
+            proc = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
+                 "-show_entries", "stream=width,height",
+                 "-of", "csv=p=0", img_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            parts = proc.stdout.strip().split(",")
+            iw, ih = int(parts[0]), int(parts[1])
+            new_h = max(2, int(ih * w_out / iw))
+        except Exception:
+            new_h = h_fallback
+        return new_h if new_h % 2 == 0 else new_h + 1
+
+    def _vstack_run(self, image_paths: list, heights: list, w_out: int,
+                    output_path: str) -> bool:
+        """One FFmpeg call: scale each image to (w_out × heights[i]) then vstack."""
+        n = len(image_paths)
+        cmd = ["ffmpeg", "-y"]
+        for p in image_paths:
+            cmd += ["-i", p]
+
+        if n == 1:
+            fc = f"[0:v]scale={w_out}:{heights[0]}:flags=lanczos[stacked]"
+        else:
+            parts = [f"[{i}:v]scale={w_out}:{heights[i]}:flags=lanczos[s{i}]"
+                     for i in range(n)]
+            vstk_in = "".join(f"[s{i}]" for i in range(n))
+            fc = ";".join(parts) + f";{vstk_in}vstack=inputs={n}[stacked]"
+
+        cmd += ["-filter_complex", fc, "-map", "[stacked]", "-frames:v", "1", output_path]
+        result = self._run_ffmpeg(cmd, timeout=600)
+        if not result["ok"]:
+            self._log(f"vstack failed: {result['error'][:200]}", "error")
+        return result["ok"]
+
+    def _render_scroll_mode(self, meta: dict) -> dict:
+        """Render scroll using chunked approach to stay within FFmpeg's ~16384px frame limit.
+
+        The virtual strip is split into overlapping chunks of ≤ 14 000 px each.
+        Each chunk is rendered as a short clip; all clips are then concatenated.
+        The math guarantees frame-perfect continuity at every chunk boundary.
+        """
+        segments = meta["segments"]
+        if not segments:
+            return {"ok": False, "error": "No segments for scroll mode"}
+
+        try:
+            w_out, h_out = (int(x) for x in self.config.resolution.split("x"))
+        except Exception:
+            w_out, h_out = 1920, 1080
+
+        image_paths = [seg["image"] for seg in segments]
+        n = len(image_paths)
+        self._log(f"Scroll: probing {n} images...")
+
+        heights = [self._probe_scaled_height(p, w_out, h_out) for p in image_paths]
+
+        # Cumulative y-offsets in the virtual strip
+        y_starts: list[int] = []
+        y = 0
+        for h in heights:
+            y_starts.append(y)
+            y += h
+        total_height = y
+        scroll_range = max(0, total_height - h_out)
+
+        total_dur = meta["total_duration"]
+        if total_dur <= 0:
+            total_dur = max(n * 5.0, 10.0)
+
+        fps    = self.config.fps
+        preset = _QUALITY_PRESET.get(self.config.quality_preset, "medium")
+        crf    = _QUALITY_CRF.get(self.config.quality_preset, 23)
+
+        self._log(f"Scroll: strip {w_out}x{total_height}px, range={scroll_range}px, dur={total_dur:.1f}s")
+
+        # ── static (no scrolling) ──────────────────────────────────────────
+        if scroll_range == 0:
+            stacked = os.path.join(self.temp_dir, "scroll_stack.png")
+            if not self._vstack_run(image_paths, heights, w_out, stacked):
+                return {"ok": False, "error": "Image stacking failed"}
+            scroll_raw = os.path.join(self.temp_dir, "scroll_raw.mp4")
+            cmd = [
+                "ffmpeg", "-y", "-loop", "1", "-r", str(fps), "-i", stacked,
+                "-vf", f"crop={w_out}:{h_out}:0:0,format=yuv420p",
+                "-c:v", self.config.video_codec, "-preset", preset, "-crf", str(crf),
+                "-pix_fmt", "yuv420p", "-t", f"{total_dur:.6f}",
+                "-an", "-movflags", "+faststart", scroll_raw,
+            ]
+            res = self._run_ffmpeg(cmd, timeout=3600)
+            if not res["ok"]:
+                return {"ok": False, "error": f"Static encode failed: {res['error']}"}
+
+        # ── scrolling ─────────────────────────────────────────────────────
+        else:
+            pps = scroll_range / total_dur
+
+            # Keep each chunk PNG height ≤ 14 000 px.
+            # Worst-case chunk height = max_chunk_scroll + h_out + max_single_image_h.
+            max_img_h       = max(heights) if heights else h_out
+            max_chunk_scroll = max(h_out, 14000 - h_out - max_img_h)
+            self._log(f"Scroll: pps={pps:.2f}px/s, chunk_scroll={max_chunk_scroll}px")
+
+            clip_paths: list[str] = []
+            y_curr = 0
+            ci     = 0
+            while y_curr < scroll_range:
+                y_end    = min(y_curr + max_chunk_scroll, scroll_range)
+                clip_out = os.path.join(self.temp_dir, f"scroll_clip_{ci:04d}.mp4")
+                result   = self._render_scroll_chunk(
+                    image_paths, heights, y_starts, n,
+                    y_curr, y_end, w_out, h_out, pps, fps, preset, crf, clip_out,
+                )
+                if result is None:
+                    return {"ok": False, "error": f"Scroll chunk {ci} failed"}
+                clip_paths.append(result)
+
+                with self._progress_lock:
+                    self.progress.overall_progress = 0.10 + (y_end / scroll_range) * 0.60
+                self._notify_progress()
+                self._log(f"Scroll: chunk {ci+1} done  y=[{y_curr}→{y_end}]")
+
+                y_curr = y_end
+                ci    += 1
+
+            scroll_raw = os.path.join(self.temp_dir, "scroll_raw.mp4")
+            if len(clip_paths) == 1:
+                shutil.copy2(clip_paths[0], scroll_raw)
+            else:
+                self._log(f"Scroll: joining {len(clip_paths)} chunks...")
+                concat_txt = os.path.join(self.temp_dir, "scroll_clips.txt")
+                with open(concat_txt, "w", encoding="utf-8") as f:
+                    for cp in clip_paths:
+                        f.write(f"file '{cp.replace(chr(92), '/')}'\n")
+                cmd_cat = [
+                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                    "-i", concat_txt, "-c", "copy", scroll_raw,
+                ]
+                cat_res = self._run_ffmpeg(cmd_cat, timeout=1800)
+                if not cat_res["ok"]:
+                    return {"ok": False, "error": f"Chunk concat failed: {cat_res['error']}"}
+
+        with self._progress_lock:
+            self.progress.overall_progress = 0.70
+        self._notify_progress()
+
+        # ── mux audio ─────────────────────────────────────────────────────
+        if meta.get("single_audio_mode"):
+            audio_src = self.config.single_audio_file
+        else:
+            audio_src = self._concat_segment_audio(segments)
+            if not audio_src:
+                return {"ok": False, "error": "Failed to concatenate audio files"}
+
+        scroll_out = os.path.join(self.temp_dir, "scroll_muxed.mp4")
+        cmd_mux = [
+            "ffmpeg", "-y",
+            "-i", scroll_raw, "-i", audio_src,
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", self.config.audio_codec, "-b:a", self.config.audio_bitrate,
+            "-shortest", scroll_out,
+        ]
+        self._log("Scroll: muxing audio...")
+        mux_res = self._run_ffmpeg(cmd_mux, timeout=1800)
+        if not mux_res["ok"]:
+            return {"ok": False, "error": f"Audio mux failed: {mux_res['error']}"}
+
+        with self._progress_lock:
+            self.progress.overall_progress = 0.80
+        self._notify_progress()
+        self._log("Scroll render complete")
+        return {"ok": True, "path": scroll_out, "segment_count": n}
+
+    def _render_scroll_chunk(
+        self,
+        image_paths: list, heights: list, y_starts: list, n: int,
+        y_scroll_start: float, y_scroll_end: float,
+        w_out: int, h_out: int, pps: float,
+        fps: int, preset: str, crf: int,
+        out_path: str,
+    ) -> str | None:
+        """Render one scroll clip covering y_scroll ∈ [y_scroll_start, y_scroll_end].
+
+        The chunk PNG contains every image that is (partially) visible anywhere
+        in this range.  The crop y-expression maps global scroll positions to
+        the correct row inside the chunk PNG, guaranteeing seamless joins.
+        """
+        vis_end    = y_scroll_end + h_out
+        chunk_idxs = [
+            i for i in range(n)
+            if y_starts[i] + heights[i] > y_scroll_start and y_starts[i] < vis_end
+        ]
+        if not chunk_idxs:
+            return None
+
+        first_i   = chunk_idxs[0]
+        chunk_png = out_path.replace(".mp4", "_stack.png")
+        ok = self._vstack_run(
+            [image_paths[i] for i in chunk_idxs],
+            [heights[i]     for i in chunk_idxs],
+            w_out, chunk_png,
+        )
+        if not ok:
+            return None
+
+        # y-offset inside the chunk PNG corresponding to y_scroll_start
+        y_crop_0        = y_scroll_start - y_starts[first_i]
+        scroll_in_chunk = y_scroll_end - y_scroll_start
+        dur             = scroll_in_chunk / pps
+
+        y_expr = f"min({y_crop_0:.2f}+t*{pps:.4f},{y_crop_0:.2f}+{scroll_in_chunk:.2f})"
+        vf     = f"crop={w_out}:{h_out}:0:'{y_expr}',format=yuv420p"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1", "-r", str(fps),
+            "-i", chunk_png,
+            "-vf", vf,
+            "-c:v", "libx264",          # consistent codec across all clips for -c copy concat
+            "-preset", preset, "-crf", str(crf),
+            "-pix_fmt", "yuv420p",
+            "-t", f"{dur:.6f}",
+            "-an", "-movflags", "+faststart",
+            out_path,
+        ]
+        res = self._run_ffmpeg(cmd, timeout=600)
+        if not res["ok"]:
+            self._log(f"Scroll chunk failed: {res['error'][:150]}", "error")
+            return None
+        return out_path
+
     # ── Phase 2: merge ────────────────────────────────────────────────────
 
     def merge_segments(self, segment_files: list, output_path: str, force_concat: bool = False) -> dict:
@@ -912,46 +1178,56 @@ class VideoProcessor:
         if self._cancel_event.is_set():
             return self._cancel()
 
-        # Phase 1
-        self.progress.current_phase = "rendering"
-        render_results = self.render_all_segments_parallel(segments)
-        if self._cancel_event.is_set():
-            return self._cancel()
+        if self.config.scroll_mode:
+            # Scroll mode: bypass per-segment render — build one vertical image strip + pan
+            self.progress.current_phase = "rendering"
+            self._log("Scroll mode: building continuous scroll video")
+            scroll_result = self._render_scroll_mode(meta)
+            if not scroll_result["ok"]:
+                return self._fail(scroll_result.get("error", "Scroll render failed"))
+            current = scroll_result["path"]
+            failed_count = 0
+        else:
+            # Phase 1 — render each segment individually
+            self.progress.current_phase = "rendering"
+            render_results = self.render_all_segments_parallel(segments)
+            if self._cancel_event.is_set():
+                return self._cancel()
 
-        ok_segments   = [r["path"] for r in render_results if r and r.get("ok")]
-        failed_count  = len(segments) - len(ok_segments)
-        skipped_count = sum(1 for r in render_results if r and r.get("skipped"))
-        if skipped_count:
-            self._log(f"{skipped_count} segment(s) skipped (audio too short)", "warning")
-        if failed_count - skipped_count > 0:
-            self._log(f"{failed_count - skipped_count} segment(s) failed after retry", "warning")
-        if not ok_segments:
-            return self._fail("All segments failed to render")
+            ok_segments   = [r["path"] for r in render_results if r and r.get("ok")]
+            failed_count  = len(segments) - len(ok_segments)
+            skipped_count = sum(1 for r in render_results if r and r.get("skipped"))
+            if skipped_count:
+                self._log(f"{skipped_count} segment(s) skipped (audio too short)", "warning")
+            if failed_count - skipped_count > 0:
+                self._log(f"{failed_count - skipped_count} segment(s) failed after retry", "warning")
+            if not ok_segments:
+                return self._fail("All segments failed to render")
 
-        # Phase 2
-        self.progress.current_phase  = "merging"
-        self.progress.overall_progress = 0.75
-        self._notify_progress()
-
-        single_audio = bool(self.config.single_audio_file)
-        merged_path  = os.path.join(self.temp_dir, "merged.mp4")
-        # Single-audio segments are video-only; force concat (no transitions) so
-        # total duration equals exactly the audio duration.
-        merge_result = self.merge_segments(ok_segments, merged_path, force_concat=single_audio)
-        if not merge_result["ok"]:
-            return self._fail(f"Merge failed: {merge_result.get('error')}")
-
-        current = merged_path
-
-        # Phase 2b: inject single audio track
-        if single_audio:
-            self.progress.overall_progress = 0.78
+            # Phase 2
+            self.progress.current_phase  = "merging"
+            self.progress.overall_progress = 0.75
             self._notify_progress()
-            injected_path = os.path.join(self.temp_dir, "audio_injected.mp4")
-            inject_result = self._inject_single_audio(current, injected_path)
-            if not inject_result["ok"]:
-                return self._fail(f"Audio injection failed: {inject_result.get('error')}")
-            current = injected_path
+
+            single_audio = bool(self.config.single_audio_file)
+            merged_path  = os.path.join(self.temp_dir, "merged.mp4")
+            # Single-audio segments are video-only; force concat (no transitions)
+            # so total duration equals exactly the audio duration.
+            merge_result = self.merge_segments(ok_segments, merged_path, force_concat=single_audio)
+            if not merge_result["ok"]:
+                return self._fail(f"Merge failed: {merge_result.get('error')}")
+
+            current = merged_path
+
+            # Phase 2b: inject single audio track
+            if single_audio:
+                self.progress.overall_progress = 0.78
+                self._notify_progress()
+                injected_path = os.path.join(self.temp_dir, "audio_injected.mp4")
+                inject_result = self._inject_single_audio(current, injected_path)
+                if not inject_result["ok"]:
+                    return self._fail(f"Audio injection failed: {inject_result.get('error')}")
+                current = injected_path
 
         if self._cancel_event.is_set():
             return self._cancel()

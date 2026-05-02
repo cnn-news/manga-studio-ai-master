@@ -1,0 +1,17 @@
+=== Manga Studio AI — render session 20260503_020228 ===
+Job: N/A
+────────────────────────────────────────────────
+[02:02:28] [INFO   ] Pipeline started — project: test, hw_encoder: nvenc
+[02:02:28] [INFO   ] Phase 0: Single-audio mode — validating inputs…
+[02:02:28] [INFO   ] Single-audio: 104 images, audio=134.950s, per_seg=1.297596s, est=148.44MB
+[02:02:28] [INFO   ] Scroll mode: building continuous scroll video
+[02:02:28] [INFO   ] Scroll: probing 104 images...
+[02:02:31] [INFO   ] Scroll: stacking → 1920x319488px
+[02:03:03] [ERROR  ] vstack failed:  00000046e79ff3a0] Picture size 1920x319488 is invalid
+[fc#0 @ 00000194e5c27980] Error reinitializing filters!
+[fc#0 @ 00000194e5c27980] Task finished with error code: -22 (Invalid argument)
+[fc#0 @ 0
+[02:03:03] [ERROR  ] Pipeline failed: Image stacking failed — check FFmpeg logs
+[02:03:03] [INFO   ] Cleaned temp: D:/_temp_565dd4d3
+────────────────────────────────────────────────
+=== Session ended ===

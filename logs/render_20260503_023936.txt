@@ -1,0 +1,43 @@
+=== Manga Studio AI — render session 20260503_023936 ===
+Job: N/A
+────────────────────────────────────────────────
+[02:39:36] [INFO   ] Pipeline started — project: test, hw_encoder: nvenc
+[02:39:36] [INFO   ] Phase 0: Single-audio mode — validating inputs…
+[02:39:36] [INFO   ] Single-audio: 69 images, audio=256.900s, per_seg=3.723188s, est=282.59MB
+[02:39:36] [INFO   ] Scroll mode: building continuous scroll video
+[02:39:36] [INFO   ] Scroll: probing 69 images...
+[02:39:39] [INFO   ] Scroll: strip 1920x211968px, range=210888px, dur=256.9s
+[02:39:39] [INFO   ] Scroll: pps=820.90px/s, chunk_scroll=9848px
+[02:39:56] [INFO   ] Scroll: chunk 1 done  y=[0→9848]
+[02:40:16] [INFO   ] Scroll: chunk 2 done  y=[9848→19696]
+[02:40:36] [INFO   ] Scroll: chunk 3 done  y=[19696→29544]
+[02:41:01] [INFO   ] Scroll: chunk 4 done  y=[29544→39392]
+[02:41:29] [INFO   ] Scroll: chunk 5 done  y=[39392→49240]
+[02:41:53] [INFO   ] Scroll: chunk 6 done  y=[49240→59088]
+[02:42:16] [INFO   ] Scroll: chunk 7 done  y=[59088→68936]
+[02:42:37] [INFO   ] Scroll: chunk 8 done  y=[68936→78784]
+[02:43:00] [INFO   ] Scroll: chunk 9 done  y=[78784→88632]
+[02:43:23] [INFO   ] Scroll: chunk 10 done  y=[88632→98480]
+[02:43:43] [INFO   ] Scroll: chunk 11 done  y=[98480→108328]
+[02:44:02] [INFO   ] Scroll: chunk 12 done  y=[108328→118176]
+[02:44:27] [INFO   ] Scroll: chunk 13 done  y=[118176→128024]
+[02:44:50] [INFO   ] Scroll: chunk 14 done  y=[128024→137872]
+[02:45:13] [INFO   ] Scroll: chunk 15 done  y=[137872→147720]
+[02:45:34] [INFO   ] Scroll: chunk 16 done  y=[147720→157568]
+[02:45:55] [INFO   ] Scroll: chunk 17 done  y=[157568→167416]
+[02:46:18] [INFO   ] Scroll: chunk 18 done  y=[167416→177264]
+[02:46:43] [INFO   ] Scroll: chunk 19 done  y=[177264→187112]
+[02:47:06] [INFO   ] Scroll: chunk 20 done  y=[187112→196960]
+[02:47:25] [INFO   ] Scroll: chunk 21 done  y=[196960→206808]
+[02:47:32] [INFO   ] Scroll: chunk 22 done  y=[206808→210888]
+[02:47:32] [INFO   ] Scroll: joining 22 chunks...
+[02:47:32] [INFO   ] Scroll: muxing audio...
+[02:47:37] [INFO   ] Scroll render complete
+[02:47:37] [INFO   ] Burning subtitles (preset=karaoke)…
+[02:49:30] [INFO   ] Finalizing → test.mp4
+[02:49:30] [INFO   ] Finalize: using libx264 (software)
+[02:51:32] [INFO   ] Final output: 158.97 MB, 256.9s, encoded in 121.22s
+[02:51:32] [INFO   ] Cleaned temp: D:/_temp_cc5bbaf2
+[02:51:32] [INFO   ] Pipeline complete → D:/test.mp4
+────────────────────────────────────────────────
+=== Session ended ===
