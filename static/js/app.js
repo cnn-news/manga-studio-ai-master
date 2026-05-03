@@ -637,7 +637,13 @@ function onComplete(result) {
     setText('out-segments',    r.segment_count ?? '—');
     if (r.render_time) {
         const _rt = Math.round(r.render_time);
-        setText('out-render-time', String(Math.floor(_rt / 60)).padStart(2, '0') + ':' + String(_rt % 60).padStart(2, '0'));
+        const _h  = Math.floor(_rt / 3600);
+        const _m  = Math.floor((_rt % 3600) / 60);
+        const _s  = _rt % 60;
+        const _ts = _h > 0
+            ? `${_h}:${String(_m).padStart(2,'0')}:${String(_s).padStart(2,'0')}`
+            : `${String(_m).padStart(2,'0')}:${String(_s).padStart(2,'0')}`;
+        setText('out-render-time', _ts);
     } else { setText('out-render-time', '—'); }
     setText('out-path',        r.output_path   || '—');
     setText('success-sub',     r.output_path   ? 'Đã lưu: ' + r.output_path : 'Video đã sẵn sàng.');
@@ -876,7 +882,6 @@ const App = {
         const subEnabled     = $('subtitle-enabled')?.checked ?? false;
         const activeSubStyle = document.querySelector('.sub-style-btn.active');
         const subSource      = document.querySelector('.sub-source-btn.active')?.dataset.source || 'auto';
-        const subLanguage    = $('sub-language')?.value || 'auto';
         let   srtPath        = $('srt-path')?.value?.trim() || '';
 
         const fileMode        = _isFileMode();
@@ -903,12 +908,15 @@ const App = {
             subtitle_srt_path:  null,  // resolved below
             normalize_audio:    $('normalize-audio')?.checked ?? true,
             audio_fade:         parseFloat($('audio-fade-in')?.value) || 0.3,
-            watermark_text:     $('watermark-text')?.value?.trim() || '',
+            watermark_text:       $('watermark-text')?.value?.trim() || '',
+            watermark_color:      $('watermark-color')?.value || '#ffffff',
+            watermark_bg_opacity: (parseInt($('watermark-bg-opacity')?.value) || 0) / 100,
             intro_path:         $('intro-path')?.value     || null,
             outro_path:         $('outro-path')?.value     || null,
             video_bitrate:      $('video-bitrate')?.value  || '8M',
             audio_bitrate:      $('audio-bitrate')?.value  || '192k',
             scroll_mode:        scrollMode,
+            image_scale:        (parseInt($('image-scale')?.value) || 100) / 100,
         };
 
         const audioOk = fileMode ? !!cfg.single_audio_file : !!cfg.audio_folder;
@@ -929,7 +937,7 @@ const App = {
                 // source = 'auto': generate SRT from audio source (folder or single file)
                 if (!srtPath) {
                     toast('Đang tạo phụ đề tự động từ audio…', 'info');
-                    srtPath = await this._generateSRTForRender(cfg.output_folder, subLanguage);
+                    srtPath = await this._generateSRTForRender(cfg.output_folder, 'auto');
                     if (!srtPath) return; // error already toasted
                 }
                 cfg.subtitle_srt_path = srtPath;
@@ -1036,7 +1044,7 @@ const App = {
         setVal('audio-folder',  '');
         setVal('audio-file',    '');
         setVal('output-folder', 'D:/');
-        this.setAudioMode('folder');
+        this.setAudioMode('file');
         setVal('project-name',  '');
         // Project / export
         setVal('resolution', '1920x1080');
@@ -1044,11 +1052,13 @@ const App = {
         setVal('quality', 'balanced');
         // Scroll mode
         const scrollMode = document.getElementById('scroll-mode');
-        if (scrollMode) { scrollMode.checked = false; this.toggleScrollMode(); }
+        if (scrollMode) { scrollMode.checked = true; this.toggleScrollMode(); }
         // Effect
         const effRandom = document.getElementById('effect-random');
         if (effRandom) { effRandom.checked = true; this.toggleEffectRandom(); }
         setVal('effect-speed', 'normal');
+        setVal('image-scale', '80');
+        const isv = document.getElementById('image-scale-val'); if (isv) isv.textContent = '80%';
         document.querySelectorAll('.fx-btn[data-effect]').forEach(b => b.classList.toggle('active', b.dataset.effect === 'zoom_pulse'));
         // Transition
         const transRandom = document.getElementById('transition-random');
@@ -1057,10 +1067,9 @@ const App = {
         document.querySelectorAll('.fx-btn[data-transition]').forEach(b => b.classList.toggle('active', b.dataset.transition === 'fade_black'));
         // Subtitle
         const subEnabled = document.getElementById('subtitle-enabled');
-        if (subEnabled) { subEnabled.checked = false; this.toggleSubtitle(); }
+        if (subEnabled) { subEnabled.checked = true; this.toggleSubtitle(); }
         document.querySelectorAll('.sub-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === 'karaoke'));
         setVal('srt-path', '');
-        setVal('sub-language', 'auto');
         this.toggleSubtitleSource('auto');
         const genStatus = document.getElementById('sub-gen-status');
         if (genStatus) genStatus.textContent = '';
@@ -1072,7 +1081,12 @@ const App = {
         const fi = document.getElementById('audio-fade-in-val');  if (fi) fi.textContent = '0.5s';
         setVal('audio-fade-out', '1.0');
         const fo = document.getElementById('audio-fade-out-val'); if (fo) fo.textContent = '1.0s';
-        setVal('watermark-text', '');
+        setVal('watermark-text', 'Manhwa Recap Hub');
+        setVal('watermark-color', '#ff6b9d');
+        setVal('watermark-bg-opacity', '70');
+        const wmhex = $('watermark-color-hex');    if (wmhex)  wmhex.textContent  = '#ff6b9d';
+        const wmbgv = $('wm-bg-val');              if (wmbgv)  wmbgv.textContent  = '70%';
+        this._toggleWmStyleRows();
         setVal('video-bitrate',  '8M');
         setVal('audio-bitrate',  '192k');
         setVal('intro-path',     '');
@@ -1230,25 +1244,42 @@ const App = {
         const banner = document.getElementById('scroll-mode-banner');
         if (banner) banner.classList.toggle('hidden', !on);
 
-        // When scroll is ON: grey-out and lock the random-effect toggle
-        const effRandomInput = document.getElementById('effect-random');
-        const effRandomWrap  = document.getElementById('effect-random-wrap');
-        const effRandomLabel = document.getElementById('effect-random-label');
-        const effSpeedRow    = document.getElementById('effect-speed-row');
+        // When scroll is ON: grey-out the random-effect toggle and hide transition section
+        const effRandomInput   = document.getElementById('effect-random');
+        const effRandomWrap    = document.getElementById('effect-random-wrap');
+        const effRandomLabel   = document.getElementById('effect-random-label');
+        const effSpeedRow      = document.getElementById('effect-speed-row');
+        const transitionSection = document.getElementById('transition-section');
 
         if (on) {
             if (effRandomInput) { effRandomInput.checked = true; effRandomInput.disabled = true; }
-            if (effRandomWrap)  effRandomWrap.style.opacity  = '0.35';
-            if (effRandomLabel) effRandomLabel.style.opacity = '0.35';
-            if (effSpeedRow)    effSpeedRow.style.display    = 'none';
+            if (effRandomWrap)   effRandomWrap.style.opacity   = '0.35';
+            if (effRandomLabel)  effRandomLabel.style.opacity  = '0.35';
+            if (effSpeedRow)     effSpeedRow.style.display     = 'none';
+            if (transitionSection) transitionSection.style.display = 'none';
             document.getElementById('effect-selector')?.classList.add('hidden');
         } else {
             if (effRandomInput) effRandomInput.disabled = false;
-            if (effRandomWrap)  effRandomWrap.style.opacity  = '';
-            if (effRandomLabel) effRandomLabel.style.opacity = '';
-            if (effSpeedRow)    effSpeedRow.style.display    = '';
+            if (effRandomWrap)   effRandomWrap.style.opacity   = '';
+            if (effRandomLabel)  effRandomLabel.style.opacity  = '';
+            if (effSpeedRow)     effSpeedRow.style.display      = '';
+            if (transitionSection) transitionSection.style.display = '';
             this.toggleEffectRandom();
         }
+    },
+
+    // ── Watermark helpers ─────────────────────────────────────
+    _syncWmColorInput() {
+        const v = $('watermark-color')?.value || '#ffffff';
+        const hex = $('watermark-color-hex'); if (hex) hex.textContent = v;
+    },
+
+    _toggleWmStyleRows() {
+        const hasText = !!($('watermark-text')?.value?.trim());
+        const styleRow = $('watermark-style-row');
+        const bgRow    = $('watermark-bg-row');
+        if (styleRow) styleRow.style.display = hasText ? '' : 'none';
+        if (bgRow)    bgRow.style.display    = hasText ? '' : 'none';
     },
 
     // ── Effect toggle ──────────────────────────────────────────
@@ -1582,7 +1613,7 @@ const App = {
     // ── Whisper auto-generate ─────────────────────────────────
     async generateSubtitle() {
         const outputFolder = $('output-folder')?.value?.trim() || '';
-        const language     = $('sub-language')?.value  || 'auto';
+        const language     = 'auto';
 
         if (!this._hasAudioSource()) {
             toast(
@@ -1710,6 +1741,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Init subtitle preview on first style
     App.renderSubPreview('karaoke');
+
+    // Apply default UI states
+    App.setAudioMode('file');          // File đơn mặc định
+    App.toggleScrollMode();            // Cuộn dọc ON
+    App._toggleWmStyleRows();          // Watermark style rows
+    const _subDef = $('subtitle-enabled');
+    if (_subDef) { _subDef.checked = true; App.toggleSubtitle(); } // Phụ đề ON
 
     // JS tooltip system (position:fixed, not clipped by sidebar overflow)
     _initTooltip();

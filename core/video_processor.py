@@ -84,13 +84,16 @@ class RenderConfig:
     audio_fade:          float = 0.3
     bgm_path:            str | None = None
     bgm_volume:          float = 0.15
-    watermark_text:      str        = ""
-    watermark_path:      str | None = None
-    watermark_position:  str        = "bottom_right"
-    watermark_opacity:   float      = 0.7
-    watermark_scale:     float      = 0.15
+    watermark_text:       str        = "Manhwa Recap Hub"
+    watermark_path:       str | None = None
+    watermark_position:   str        = "bottom_right"
+    watermark_opacity:    float      = 0.9   # text / image opacity
+    watermark_scale:      float      = 0.15
+    watermark_color:      str        = "#ff6b9d"  # text color (#RRGGBB or named)
+    watermark_bg_opacity: float      = 0.7   # box background opacity (0 = none)
     intro_path:          str | None = None
     outro_path:          str | None = None
+    image_scale:         float = 0.8          # 0.1–1.0; <1.0 shows blur background border
     max_workers:         int | None = None   # None → auto (cpu_count // 2)
     scroll_mode:         bool = False        # stack images vertically, pan top→bottom
 
@@ -456,7 +459,9 @@ class VideoProcessor:
         Duration is enforced exactly via -t; the caller guarantees
         sum(durations) == audio_duration so the final mux is sample-accurate.
         """
-        video_filter = self.effect_engine.get_effect(effect_name, duration, self.config.effect_speed)
+        video_filter = self.effect_engine.get_effect(
+            effect_name, duration, self.config.effect_speed, self.config.image_scale
+        )
         preset = _QUALITY_PRESET.get(self.config.quality_preset, "medium")
         crf    = _QUALITY_CRF.get(self.config.quality_preset, 23)
 
@@ -511,8 +516,9 @@ class VideoProcessor:
                 "skipped": True,
             }
 
-        # Effect engine now handles letterbox internally — no pre-processing needed
-        video_filter = self.effect_engine.get_effect(effect_name, duration, self.config.effect_speed)
+        video_filter = self.effect_engine.get_effect(
+            effect_name, duration, self.config.effect_speed, self.config.image_scale
+        )
 
         # Audio processing chain
         af_parts: list[str] = []
@@ -693,20 +699,51 @@ class VideoProcessor:
         return new_h if new_h % 2 == 0 else new_h + 1
 
     def _vstack_run(self, image_paths: list, heights: list, w_out: int,
-                    output_path: str) -> bool:
-        """One FFmpeg call: scale each image to (w_out × heights[i]) then vstack."""
-        n = len(image_paths)
-        cmd = ["ffmpeg", "-y"]
+                    output_path: str, image_scale: float = 1.0) -> bool:
+        """Stack images vertically.
+
+        image_scale < 1.0: each row becomes a (w_out × heights[i]) blur panel
+        with the image centred at (w_out*scale) width.  heights[i] must already
+        be calculated at fg_w = int(w_out*scale) width by the caller.
+        """
+        n     = len(image_paths)
+        scale = max(0.1, min(1.0, image_scale))
+        cmd   = ["ffmpeg", "-y"]
         for p in image_paths:
             cmd += ["-i", p]
 
-        if n == 1:
-            fc = f"[0:v]scale={w_out}:{heights[0]}:flags=lanczos[stacked]"
+        if scale >= 0.999:
+            # ── simple: each image scales to w_out × heights[i] ──────────────
+            if n == 1:
+                fc = f"[0:v]scale={w_out}:{heights[0]}:flags=lanczos[stacked]"
+            else:
+                parts   = [f"[{i}:v]scale={w_out}:{heights[i]}:flags=lanczos[s{i}]"
+                           for i in range(n)]
+                vstk_in = "".join(f"[s{i}]" for i in range(n))
+                fc      = ";".join(parts) + f";{vstk_in}vstack=inputs={n}[stacked]"
         else:
-            parts = [f"[{i}:v]scale={w_out}:{heights[i]}:flags=lanczos[s{i}]"
-                     for i in range(n)]
-            vstk_in = "".join(f"[s{i}]" for i in range(n))
-            fc = ";".join(parts) + f";{vstk_in}vstack=inputs={n}[stacked]"
+            # ── blur panel: fg at fg_w centred on blurred bg at w_out ─────────
+            fg_w = int(w_out * scale)
+            if fg_w % 2 != 0:
+                fg_w -= 1
+            panel_parts = []
+            for i in range(n):
+                h = heights[i]
+                panel_parts.append(
+                    f"[{i}:v]split=2[_pb{i}][_pf{i}];"
+                    # blur bg: cover-scale the image to fill w_out × h, then blur
+                    f"[_pb{i}]scale={w_out}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={w_out}:{h},gblur=sigma=30[_pbg{i}];"
+                    # fg: scale to exactly fg_w × h (heights[i] was computed at fg_w)
+                    f"[_pf{i}]scale={fg_w}:{h}:flags=lanczos[_pfg{i}];"
+                    # overlay centred
+                    f"[_pbg{i}][_pfg{i}]overlay=(W-w)/2:(H-h)/2[_panel{i}]"
+                )
+            if n == 1:
+                fc = ";".join(panel_parts) + ";[_panel0]copy[stacked]"
+            else:
+                vstk_in = "".join(f"[_panel{i}]" for i in range(n))
+                fc      = ";".join(panel_parts) + f";{vstk_in}vstack=inputs={n}[stacked]"
 
         cmd += ["-filter_complex", fc, "-map", "[stacked]", "-frames:v", "1", output_path]
         result = self._run_ffmpeg(cmd, timeout=600)
@@ -730,11 +767,21 @@ class VideoProcessor:
         except Exception:
             w_out, h_out = 1920, 1080
 
-        image_paths = [seg["image"] for seg in segments]
-        n = len(image_paths)
-        self._log(f"Scroll: probing {n} images...")
+        image_paths  = [seg["image"] for seg in segments]
+        n            = len(image_paths)
+        image_scale  = max(0.1, min(1.0, self.config.image_scale))
 
-        heights = [self._probe_scaled_height(p, w_out, h_out) for p in image_paths]
+        # When scale < 1: each panel row is the image at fg_w wide (blur fills the rest)
+        if image_scale < 0.999:
+            fg_w = int(w_out * image_scale)
+            if fg_w % 2 != 0:
+                fg_w -= 1
+            probe_w = fg_w
+        else:
+            probe_w = w_out
+
+        self._log(f"Scroll: probing {n} images (scale={image_scale:.0%}, probe_w={probe_w})...")
+        heights = [self._probe_scaled_height(p, probe_w, h_out) for p in image_paths]
 
         # Cumulative y-offsets in the virtual strip
         y_starts: list[int] = []
@@ -791,6 +838,7 @@ class VideoProcessor:
                 result   = self._render_scroll_chunk(
                     image_paths, heights, y_starts, n,
                     y_curr, y_end, w_out, h_out, pps, fps, preset, crf, clip_out,
+                    image_scale,
                 )
                 if result is None:
                     return {"ok": False, "error": f"Scroll chunk {ci} failed"}
@@ -859,6 +907,7 @@ class VideoProcessor:
         w_out: int, h_out: int, pps: float,
         fps: int, preset: str, crf: int,
         out_path: str,
+        image_scale: float = 1.0,
     ) -> str | None:
         """Render one scroll clip covering y_scroll ∈ [y_scroll_start, y_scroll_end].
 
@@ -880,6 +929,7 @@ class VideoProcessor:
             [image_paths[i] for i in chunk_idxs],
             [heights[i]     for i in chunk_idxs],
             w_out, chunk_png,
+            image_scale,
         )
         if not ok:
             return None
@@ -972,6 +1022,36 @@ class VideoProcessor:
 
     # ── Phase 3a: watermark ───────────────────────────────────────────────
 
+    @staticmethod
+    def _find_system_font() -> str:
+        """Return the path to any available TTF/OTF font file on this system."""
+        import glob as _glob
+        candidates = [
+            # Windows — check the Fonts directory for any TTF
+            r"C:\Windows\Fonts\arial.ttf",
+            r"C:\Windows\Fonts\calibri.ttf",
+            r"C:\Windows\Fonts\segoeui.ttf",
+            r"C:\Windows\Fonts\tahoma.ttf",
+            r"C:\Windows\Fonts\verdana.ttf",
+            # macOS
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            # Linux
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        # Fallback: grab the first TTF found in Windows Fonts
+        for pattern in [r"C:\Windows\Fonts\*.ttf", "/usr/share/fonts/**/*.ttf"]:
+            matches = _glob.glob(pattern, recursive=True)
+            if matches:
+                return matches[0]
+        return ""
+
     def apply_watermark(self, input_path: str, output_path: str) -> dict:
         has_text  = bool(self.config.watermark_text and self.config.watermark_text.strip())
         has_image = bool(self.config.watermark_path)
@@ -981,7 +1061,6 @@ class VideoProcessor:
         self._log("Applying watermark…")
 
         if has_text:
-            # Text watermark via FFmpeg drawtext
             _POS_TEXT = {
                 "top_left":     "x=20:y=20",
                 "top_right":    "x=w-text_w-20:y=20",
@@ -991,16 +1070,45 @@ class VideoProcessor:
             pos      = _POS_TEXT.get(self.config.watermark_position, "x=w-text_w-20:y=h-text_h-20")
             alpha    = self.config.watermark_opacity
             fontsize = max(18, int(self.config.watermark_scale * 120))
+
             # Escape special chars for drawtext
             text = (self.config.watermark_text.strip()
                     .replace("\\", "\\\\").replace("'", "\\'")
                     .replace(":", "\\:").replace(",", "\\,"))
-            vf = (
-                f"drawtext=text='{text}':fontsize={fontsize}:"
-                f"fontcolor=white@{alpha}:"
-                f"shadowcolor=black@{alpha}:shadowx=2:shadowy=2:"
-                f"{pos}"
-            )
+
+            # fontfile is required on Windows (Fontconfig not available)
+            font_path = self._find_system_font()
+            if font_path:
+                # Forward-slashes, colon escaped for FFmpeg filter syntax
+                fp = font_path.replace("\\", "/").replace(":", "\\:")
+                font_part = f"fontfile='{fp}'"
+            else:
+                font_part = ""
+                self._log("No system font found — drawtext may fail on Windows", "warning")
+
+            # Resolve text color — convert #RRGGBB → 0xRRGGBB for FFmpeg compatibility
+            raw_color = (self.config.watermark_color or "white").strip()
+            if raw_color.startswith("#") and len(raw_color) == 7:
+                ffmpeg_color = "0x" + raw_color[1:]
+            else:
+                ffmpeg_color = raw_color
+
+            bg_opacity = max(0.0, min(1.0, self.config.watermark_bg_opacity))
+
+            parts = [f"text='{text}'"]
+            if font_part:
+                parts.append(font_part)
+            parts += [
+                f"fontsize={fontsize}",
+                f"fontcolor={ffmpeg_color}@{alpha}",
+                f"shadowcolor=black@{alpha}:shadowx=2:shadowy=2",
+            ]
+            # Optional semi-transparent box behind text
+            if bg_opacity > 0.01:
+                parts.append(f"box=1:boxcolor=black@{bg_opacity:.2f}:boxborderw=8")
+            parts.append(pos)
+            vf = "drawtext=" + ":".join(parts)
+
             cmd = [
                 "ffmpeg", "-y",
                 "-i", input_path,
@@ -1237,7 +1345,7 @@ class VideoProcessor:
         self.progress.overall_progress = 0.85
         self._notify_progress()
 
-        if self.config.watermark_path:
+        if self.config.watermark_text.strip() or self.config.watermark_path:
             wm_path = os.path.join(self.temp_dir, "watermarked.mp4")
             wm = self.apply_watermark(current, wm_path)
             if wm["ok"] and not wm.get("skipped"):
@@ -1273,6 +1381,7 @@ class VideoProcessor:
         self.progress.overall_progress = 1.0
         self._notify_progress()
         self._log(f"Pipeline complete → {output_file}")
+        self._cleanup_subtitle_files()
         self._logger.close()
 
         return {
@@ -1281,7 +1390,23 @@ class VideoProcessor:
             "status":          "completed",
             "segment_count":   len(segments),
             "failed_segments": failed_count,
+            "render_time":     round(time.time() - self._start_time, 2),  # total pipeline time
         }
+
+    def _cleanup_subtitle_files(self) -> None:
+        """Delete the .srt and derived .ass file after a successful render."""
+        srt = self.config.subtitle_srt_path
+        if not srt:
+            return
+        preset = self.config.subtitle_preset or "none"
+        ass = os.path.splitext(srt)[0] + f"_{preset}.ass"
+        for path in (srt, ass):
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    self._log(f"Deleted subtitle file: {os.path.basename(path)}")
+            except Exception as exc:
+                self._log(f"Could not delete {os.path.basename(path)}: {exc}", "warning")
 
     # ── control ───────────────────────────────────────────────────────────
 

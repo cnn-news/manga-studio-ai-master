@@ -124,8 +124,8 @@
                   </label>
                   <!-- Mode toggle -->
                   <div class="sub-source-row" style="margin-bottom:6px">
-                    <div class="sub-source-btn active" id="audio-mode-folder" onclick="App.setAudioMode('folder')">📁 Thư mục</div>
-                    <div class="sub-source-btn" id="audio-mode-file" onclick="App.setAudioMode('file')">🎵 File đơn</div>
+                    <div class="sub-source-btn" id="audio-mode-folder" onclick="App.setAudioMode('folder')">📁 Thư mục</div>
+                    <div class="sub-source-btn active" id="audio-mode-file" onclick="App.setAudioMode('file')">🎵 File đơn</div>
                   </div>
                   <!-- Folder mode input -->
                   <div id="audio-folder-wrap" class="input-with-btn">
@@ -169,7 +169,7 @@
                     <span class="info-icon" data-tooltip="Nối liền mạch tất cả ảnh thành dải dọc và tạo hiệu ứng cuộn từ trên xuống dưới — giống đọc webtoon. Khi bật: tắt hiệu ứng ngẫu nhiên &amp; chuyển cảnh.">i</span>
                   </label>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="scroll-mode" onchange="App.toggleScrollMode()">
+                    <input type="checkbox" id="scroll-mode" checked onchange="App.toggleScrollMode()">
                     <span class="toggle-track"><span class="toggle-thumb"></span></span>
                   </label>
                 </div>
@@ -196,6 +196,15 @@
                     <option value="fast">Nhanh</option>
                   </select>
                 </div>
+                <div class="field-row">
+                  <label class="field-label">
+                    Scale ảnh <span class="field-value" id="image-scale-val">80%</span>
+                    <span class="info-icon" data-tooltip="Thu nhỏ ảnh trong khung hình. Khi &lt; 100%, phần nền sẽ là blur của chính ảnh đó thay vì màu đen.">i</span>
+                  </label>
+                  <input type="range" class="field-range" id="image-scale"
+                         min="40" max="100" step="5" value="80"
+                         oninput="document.getElementById('image-scale-val').textContent=this.value+'%'">
+                </div>
               </div>
             </div>
 
@@ -206,22 +215,11 @@
                 <span class="section-title">Phụ Đề</span>
                 <span class="toggle-label-sm">Bật</span>
                 <label class="toggle-switch toggle-xs">
-                  <input type="checkbox" id="subtitle-enabled" onchange="App.toggleSubtitle()">
+                  <input type="checkbox" id="subtitle-enabled" checked onchange="App.toggleSubtitle()">
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
                 </label>
               </div>
               <div class="section-body" id="subtitle-panel" style="display:none">
-
-                <!-- Ngôn ngữ audio -->
-                <div class="field-row">
-                  <label class="field-label">Ngôn ngữ audio</label>
-                  <select class="field-select" id="sub-language">
-                    <option value="en">Tiếng Anh</option>
-                    <option value="vi">Tiếng Việt</option>
-                    <option value="ja">Tiếng Nhật</option>
-                    <option value="auto" selected>Auto (tự động phát hiện)</option>
-                  </select>
-                </div>
 
                 <!-- Nguồn phụ đề -->
                 <div class="field-row">
@@ -339,7 +337,7 @@
             </div>
 
             <!-- § Chuyển Cảnh -->
-            <div class="settings-section">
+            <div class="settings-section" id="transition-section">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>
                 <span class="section-title">Chuyển Cảnh</span>
@@ -400,9 +398,36 @@
                 <div class="field-row">
                   <label class="field-label">
                     Watermark
-                    <span class="info-icon" data-tooltip="Thêm chữ ký hoặc tên kênh vào góc video. Dùng để bảo vệ bản quyền nội dung.">i</span>
+                    <span class="info-icon" data-tooltip="Thêm chữ ký hoặc tên kênh vào góc video. Phụ đề luôn hiển thị đè lên trên watermark.">i</span>
                   </label>
-                  <input type="text" class="field-input" id="watermark-text" placeholder="© Your Channel">
+                  <input type="text" class="field-input" id="watermark-text" placeholder="© Your Channel" value="Manhwa Recap Hub" oninput="App._toggleWmStyleRows()">
+                </div>
+                <div class="field-row" id="watermark-style-row" style="display:none">
+                  <label class="field-label">Màu chữ &amp; nền</label>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <!-- Color presets -->
+                    <div style="display:flex;gap:4px">
+                      <div onclick="document.getElementById('watermark-color').value='#ffffff';App._syncWmColorInput()" title="Trắng"  style="width:20px;height:20px;border-radius:4px;background:#fff;border:1.5px solid var(--border);cursor:pointer"></div>
+                      <div onclick="document.getElementById('watermark-color').value='#000000';App._syncWmColorInput()" title="Đen"    style="width:20px;height:20px;border-radius:4px;background:#000;border:1.5px solid var(--border);cursor:pointer"></div>
+                      <div onclick="document.getElementById('watermark-color').value='#FFE500';App._syncWmColorInput()" title="Vàng"   style="width:20px;height:20px;border-radius:4px;background:#FFE500;border:1.5px solid var(--border);cursor:pointer"></div>
+                      <div onclick="document.getElementById('watermark-color').value='#FF6B9D';App._syncWmColorInput()" title="Hồng"   style="width:20px;height:20px;border-radius:4px;background:#FF6B9D;border:1.5px solid var(--border);cursor:pointer"></div>
+                      <div onclick="document.getElementById('watermark-color').value='#00ccff';App._syncWmColorInput()" title="Xanh"   style="width:20px;height:20px;border-radius:4px;background:#0cf;border:1.5px solid var(--border);cursor:pointer"></div>
+                    </div>
+                    <!-- Color picker -->
+                    <input type="color" id="watermark-color" value="#ff6b9d"
+                           style="width:30px;height:24px;padding:1px;border:1.5px solid var(--border);border-radius:4px;background:none;cursor:pointer"
+                           oninput="App._syncWmColorInput()">
+                    <span id="watermark-color-hex" style="font-size:.75rem;color:var(--text-secondary);min-width:52px">#ff6b9d</span>
+                  </div>
+                </div>
+                <div class="field-row" id="watermark-bg-row" style="display:none">
+                  <label class="field-label">
+                    Nền watermark <span class="field-value" id="wm-bg-val">70%</span>
+                    <span class="info-icon" data-tooltip="Độ đục của hộp nền đen sau chữ watermark. 0% = không có nền, 80% = nền tối rõ.">i</span>
+                  </label>
+                  <input type="range" class="field-range" id="watermark-bg-opacity"
+                         min="0" max="100" step="5" value="70"
+                         oninput="document.getElementById('wm-bg-val').textContent=this.value+'%'">
                 </div>
                 <div class="field-row">
                   <label class="field-label">
