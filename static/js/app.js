@@ -472,7 +472,13 @@ const FolderPicker = (() => {
                 if (inp) inp.value = _currentPath;
             }
             this.close();
-            // Trigger the specific handler so validation + card updates run
+            // Segment fields: save + validate that card
+            if (_targetField?.startsWith('seg-img-')) {
+                const i = parseInt(_targetField.replace('seg-img-', ''));
+                App.onSegmentInput(i, 'img');
+                return;
+            }
+            if (_targetField?.startsWith('seg-aud-')) return;  // FilePicker handles audio
             if      (_targetField === 'image-folder')  App.onImageFolderChange();
             else if (_targetField === 'audio-folder')  App.onAudioFolderChange();
             else                                       App.validateFolders();
@@ -884,14 +890,22 @@ const App = {
         const subSource      = document.querySelector('.sub-source-btn.active')?.dataset.source || 'auto';
         let   srtPath        = $('srt-path')?.value?.trim() || '';
 
-        const fileMode        = _isFileMode();
-        const audioFolderVal  = fileMode ? '' : ($('audio-folder')?.value?.trim()  || '');
-        const singleAudioVal  = fileMode ? ($('audio-file')?.value?.trim() || '') : null;
+        // Segment cards are the source of truth for image/audio
+        this._syncSegmentsFromDOM();
+        if (this._segments.length === 0) {
+            toast('Vui lòng nhấn "+ Thêm video" để thêm ít nhất 1 video trước khi render.', 'warning');
+            return;
+        }
+        const seg0 = this._segments[0];
+        if (!seg0.image_folder?.trim() || !seg0.audio_file?.trim()) {
+            toast('Video 1 cần có đủ Ảnh manga và Audio trước khi render.', 'warning');
+            return;
+        }
 
         const cfg = {
-            image_folder:       $('image-folder')?.value?.trim()  || '',
-            audio_folder:       audioFolderVal,
-            single_audio_file:  singleAudioVal,
+            image_folder:       seg0.image_folder.trim(),
+            audio_folder:       '',
+            single_audio_file:  seg0.audio_file.trim(),
             output_folder:      $('output-folder')?.value?.trim()  || '',
             project_name:       $('project-name')?.value   || 'output',
             resolution:         $('resolution')?.value     || '1920x1080',
@@ -917,11 +931,14 @@ const App = {
             audio_bitrate:      $('audio-bitrate')?.value  || '192k',
             scroll_mode:        scrollMode,
             image_scale:        (parseInt($('image-scale')?.value) || 100) / 100,
+            // Segments 2..N go to render_parts
+            render_parts:       this._segments.slice(1)
+                .filter(s => s.image_folder?.trim() && s.audio_file?.trim())
+                .map(s => ({ image_folder: s.image_folder.trim(), audio_file: s.audio_file.trim() })),
         };
 
-        const audioOk = fileMode ? !!cfg.single_audio_file : !!cfg.audio_folder;
-        if (!cfg.image_folder || !audioOk || !cfg.output_folder) {
-            toast('Vui lòng chọn đủ thư mục ảnh, audio và thư mục xuất trước khi render.', 'warning');
+        if (!cfg.output_folder) {
+            toast('Vui lòng chọn thư mục xuất trước khi render.', 'warning');
             return;
         }
 
@@ -1087,6 +1104,8 @@ const App = {
         const wmhex = $('watermark-color-hex');    if (wmhex)  wmhex.textContent  = '#ff6b9d';
         const wmbgv = $('wm-bg-val');              if (wmbgv)  wmbgv.textContent  = '70%';
         this._toggleWmStyleRows();
+        this._segments = [];
+        this._renderSegmentList();
         setVal('video-bitrate',  '8M');
         setVal('audio-bitrate',  '192k');
         setVal('intro-path',     '');
@@ -1266,6 +1285,147 @@ const App = {
             if (transitionSection) transitionSection.style.display = '';
             this.toggleEffectRandom();
         }
+    },
+
+    // ── Multi-segment management ──────────────────────────────
+    // _segments[0] = Video 1, _segments[1] = Video 2, ... (all videos go here)
+    _segments: [],
+
+    // Save current DOM input values back to _segments before any re-render
+    _syncSegmentsFromDOM() {
+        this._segments.forEach((seg, i) => {
+            const imgEl = document.getElementById(`seg-img-${i}`);
+            const audEl = document.getElementById(`seg-aud-${i}`);
+            if (imgEl) seg.image_folder = imgEl.value;
+            if (audEl) seg.audio_file   = audEl.value;
+        });
+    },
+
+    // Keep hidden main inputs in sync with _segments[0] for existing validation
+    _syncSeg0ToMainInputs() {
+        const seg0 = this._segments[0];
+        const imgIn = document.getElementById('image-folder');
+        const audIn = document.getElementById('audio-file');
+        if (imgIn) imgIn.value = seg0?.image_folder || '';
+        if (audIn) audIn.value = seg0?.audio_file   || '';
+        this.validateFolders();
+    },
+
+    // Fire on every keystroke in a segment card input
+    onSegmentInput(i, field) {
+        const val = document.getElementById(`seg-${field === 'img' ? 'img' : 'aud'}-${i}`)?.value || '';
+        if (this._segments[i]) {
+            if (field === 'img') this._segments[i].image_folder = val;
+            else                 this._segments[i].audio_file   = val;
+        }
+        if (i === 0) this._syncSeg0ToMainInputs();
+        this.validateSegment(i);
+    },
+
+    // Per-card validation (image folder + audio file)
+    async validateSegment(i) {
+        const seg     = this._segments[i];
+        const statusEl = document.getElementById(`seg-status-${i}`);
+        if (!seg || !statusEl) return;
+
+        const imgPath = seg.image_folder?.trim();
+        const audPath = seg.audio_file?.trim();
+        if (!imgPath && !audPath) { statusEl.innerHTML = ''; statusEl.className = 'folder-msg'; return; }
+
+        const parts = [];
+        if (imgPath) {
+            try {
+                const d = await fetch('/api/validate/folder', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: imgPath, type: 'image' }),
+                }).then(r => r.json());
+                parts.push(d.ok && d.count > 0
+                    ? `✅ ${d.count} ảnh`
+                    : `❌ ${(d.errors||[])[0] || 'Không có ảnh'}`);
+            } catch { parts.push('❌ Lỗi'); }
+        }
+        if (audPath) {
+            try {
+                const d = await fetch('/api/audio/file/analyze', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: audPath }),
+                }).then(r => r.json());
+                if (d.ok) {
+                    const s = Math.round(d.duration || 0);
+                    parts.push(`🎵 ${Math.floor(s/60)}m${s % 60}s`);
+                } else { parts.push('❌ Audio lỗi'); }
+            } catch { parts.push('❌ Lỗi'); }
+        }
+        const hasErr = parts.some(p => p.startsWith('❌'));
+        statusEl.innerHTML = parts.join(' · ');
+        statusEl.className = `folder-msg ${hasErr ? 'err' : 'ok'}`;
+    },
+
+    addSegment() {
+        if (this._segments.length >= 10) { toast('Tối đa 10 video', 'warning'); return; }
+        this._syncSegmentsFromDOM();   // preserve existing inputs before re-render
+        this._segments.push({ image_folder: '', audio_file: '' });
+        this._renderSegmentList();
+    },
+
+    removeSegment(i) {
+        this._syncSegmentsFromDOM();
+        this._segments.splice(i, 1);
+        this._renderSegmentList();
+        this._syncSeg0ToMainInputs();
+    },
+
+    _renderSegmentList() {
+        const container = document.getElementById('extra-segments-container');
+        const badge     = document.getElementById('seg-count-badge');
+        const addBtn    = document.getElementById('btn-add-segment');
+        const n         = this._segments.length;
+
+        if (badge) { badge.textContent = n + '/10'; badge.classList.toggle('hidden', n <= 1); }
+        if (addBtn) addBtn.classList.toggle('disabled', n >= 10);
+        if (!container) return;
+
+        const FOLDER_SVG = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:var(--text-secondary);flex-shrink:0"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+        const AUDIO_SVG  = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:var(--text-secondary);flex-shrink:0"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`;
+
+        container.innerHTML = '';
+        this._segments.forEach((seg, i) => {
+            const canRemove = n > 1;  // always keep at least 1 card
+            const card = document.createElement('div');
+            card.id = `seg-card-${i}`;
+            card.style.cssText = 'border:1px solid var(--border);border-radius:var(--radius-md);padding:8px 10px;margin-bottom:6px;background:var(--bg-secondary)';
+            card.innerHTML = `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:.8rem;font-weight:600;color:var(--accent-light)">📹 Video ${i + 1}</span>
+                ${canRemove ? `<div onclick="App.removeSegment(${i})" title="Xoá video này"
+                     style="width:20px;height:20px;border-radius:4px;background:var(--bg-hover);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--text-muted)">✕</div>` : ''}
+              </div>
+              <div style="margin-bottom:5px">
+                <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:2px">Ảnh manga</div>
+                <div class="input-with-btn">
+                  <input type="text" class="field-input" style="font-size:.8rem" id="seg-img-${i}"
+                         value="${seg.image_folder || ''}" placeholder="D:\\images"
+                         oninput="App.onSegmentInput(${i},'img')">
+                  <div class="btn-browse" onclick="App.browseFolder('seg-img-${i}')">${FOLDER_SVG}</div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:2px">Audio (File đơn)</div>
+                <div class="input-with-btn">
+                  <input type="text" class="field-input" style="font-size:.8rem" id="seg-aud-${i}"
+                         value="${seg.audio_file || ''}" placeholder="D:\\audio.mp3"
+                         oninput="App.onSegmentInput(${i},'aud')">
+                  <div class="btn-browse" onclick="App.browseFile('seg-aud-${i}',['.mp3','.wav','.m4a'],()=>App.onSegmentInput(${i},'aud'))">${AUDIO_SVG}</div>
+                </div>
+              </div>
+              <div id="seg-status-${i}" class="folder-msg" style="margin-top:4px"></div>`;
+            container.appendChild(card);
+
+            // Re-run validation to restore status messages after re-render
+            if (seg.image_folder || seg.audio_file) this.validateSegment(i);
+        });
+
+        this._syncSeg0ToMainInputs();
     },
 
     // ── Watermark helpers ─────────────────────────────────────
@@ -1743,9 +1903,9 @@ document.addEventListener('DOMContentLoaded', () => {
     App.renderSubPreview('karaoke');
 
     // Apply default UI states
-    App.setAudioMode('file');          // File đơn mặc định
     App.toggleScrollMode();            // Cuộn dọc ON
-    App._toggleWmStyleRows();          // Watermark style rows
+    App._toggleWmStyleRows();          // Watermark style rows visible
+    App._syncSeg0ToMainInputs();       // Keep hidden inputs in sync
     const _subDef = $('subtitle-enabled');
     if (_subDef) { _subDef.checked = true; App.toggleSubtitle(); } // Phụ đề ON
 

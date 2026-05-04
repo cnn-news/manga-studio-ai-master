@@ -1312,7 +1312,7 @@ button, input, select, textarea {
 /* ── 28. Responsive Guard ─────────────────────────────────── */
 
 @media (max-width: 1280px) {
-  :root { --sidebar-w: 680px; }
+  :root { --sidebar-w: 780px; }
 }
 
 /* Prevent any horizontal overflow at all sizes */
@@ -1394,6 +1394,8 @@ img, video, canvas, iframe { max-width: 100%; }
 .tab-pane.active { display: flex; flex-direction: column; }
 .settings-cols   { flex: 1; min-height: 0; overflow: hidden; }
 .settings-col    { overflow-y: auto; }
+/* panels-row fills sidebar between header and footer */
+.app .sidebar .panels-row { flex: 1; min-height: 0; }
 /* History tab scroll */
 #tab-history .history-toolbar { flex-shrink: 0; }
 #tab-history .history-list    { flex: 1; overflow-y: auto; }
@@ -1852,23 +1854,72 @@ img, video, canvas, iframe { max-width: 100%; }
   transform: translateX(-50%) translateY(0);
 }
 
-/* ── 2-column settings layout ────────────────────────────── */
-:root { --sidebar-w: 740px; }
+/* ── 3-panel side-by-side layout ─────────────────────────── */
+:root { --sidebar-w: 1140px; }
+@media (max-width: 1600px) { :root { --sidebar-w: 990px; } }
+@media (max-width: 1400px) { :root { --sidebar-w: 870px; } }
 
-.settings-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 100%;
+/* Panels row fills the sidebar between header-tabs and footer */
+.panels-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
-.settings-col {
+
+/* Individual panel */
+.s-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+.s-panel:last-child { border-right: none; }
+
+/* Panel title bar */
+.s-panel-hdr {
+  padding: 7px 10px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--accent-light);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  letter-spacing: .03em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Fixed add-video button bar in Panel 1 */
+.panel-add-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.btn-add-full {
+  flex: 1;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Panel scrollable body */
+.s-panel-body {
+  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  border-right: 1px solid var(--border);
   scrollbar-width: thin;
   scrollbar-color: rgba(124,58,237,0.25) transparent;
 }
-.settings-col:last-child { border-right: none; }
+
+/* Keep settings-col style for sections inside panels */
+.s-panel-body .settings-section { border-right: none; }
 
 /* section-header with inline toggle */
 .section-header .toggle-label-sm {

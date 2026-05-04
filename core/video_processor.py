@@ -94,6 +94,7 @@ class RenderConfig:
     intro_path:          str | None = None
     outro_path:          str | None = None
     image_scale:         float = 0.8          # 0.1–1.0; <1.0 shows blur background border
+    render_parts:        list = field(default_factory=list)  # [{image_folder, audio_file}, ...]
     max_workers:         int | None = None   # None → auto (cpu_count // 2)
     scroll_mode:         bool = False        # stack images vertically, pan top→bottom
 
@@ -1264,6 +1265,159 @@ class VideoProcessor:
             "render_time":  render_time,
         }
 
+    # ── multi-part pipeline ───────────────────────────────────────────────
+
+    def _run_multi_part(self) -> dict:
+        """Render N (image_folder, audio_file) pairs and concatenate into one video.
+
+        Sub-renders share all quality/effect/watermark settings.
+        Subtitle is disabled per-part (timing mismatch across different audios).
+        """
+        import copy as _copy
+
+        all_parts = [
+            {"image_folder": self.config.image_folder,
+             "audio_file":   self.config.single_audio_file or ""},
+        ] + list(self.config.render_parts)
+        n = len(all_parts)
+        self._log(f"Multi-part: {n} video(s) — project={self.config.project_name}")
+        self._notify_progress()
+
+        os.makedirs(self.config.output_folder, exist_ok=True)
+        self.temp_dir = os.path.join(
+            self.config.output_folder, f"_temp_{uuid.uuid4().hex[:8]}"
+        )
+        os.makedirs(self.temp_dir, exist_ok=True)
+
+        part_videos: list[str] = []
+
+        for idx, part in enumerate(all_parts):
+            if self._cancel_event.is_set():
+                return self._cancel()
+
+            img = part.get("image_folder", "")
+            aud = part.get("audio_file",   "")
+            self._log(f"=== Video {idx+1}/{n}: {os.path.basename(img)} ===")
+
+            # Sub-config: shared settings + specific inputs; no subtitle/bgm/intro/outro
+            sub_cfg = _copy.copy(self.config)
+            sub_cfg.image_folder      = img
+            sub_cfg.audio_folder      = ""
+            sub_cfg.single_audio_file = aud
+            sub_cfg.output_folder     = self.temp_dir
+            sub_cfg.project_name      = f"part_{idx:02d}"
+            sub_cfg.render_parts      = []     # no recursion
+            sub_cfg.subtitle_srt_path = None   # subtitle timing differs per part
+            sub_cfg.subtitle_preset   = "none"
+            sub_cfg.bgm_path          = None   # each part has its own audio
+            sub_cfg.intro_path        = None
+            sub_cfg.outro_path        = None
+
+            # Scale sub-progress into [idx/n .. (idx+1)/n] of overall
+            base  = idx / n
+            scale = 1.0 / n
+
+            def _make_cb(_base=base, _scale=scale):
+                def cb(prog):
+                    with self._progress_lock:
+                        self.progress.current_phase      = prog.current_phase
+                        self.progress.total_segments     = prog.total_segments
+                        self.progress.completed_segments = prog.completed_segments
+                        self.progress.overall_progress   = _base + prog.overall_progress * _scale
+                    self._notify_progress()
+                return cb
+
+            sub = VideoProcessor(
+                sub_cfg,
+                progress_callback=_make_cb(),
+                log_callback=self.log_callback,
+            )
+            sub._cancel_event = self._cancel_event
+            sub._resume_event = self._resume_event
+
+            res = sub.run()
+            if not res["ok"]:
+                self.cleanup_temp()
+                return self._fail(f"Video {idx+1} thất bại: {res.get('error', 'unknown')}")
+
+            part_videos.append(res["output_path"])
+            self._log(f"Video {idx+1} done: {os.path.basename(res['output_path'])}")
+
+        # ── concatenate all part videos ───────────────────────────────────
+        self._log(f"Ghép {n} video lại…")
+        self.progress.current_phase    = "merging"
+        self.progress.overall_progress = 0.97
+        self._notify_progress()
+
+        output_file = os.path.join(
+            self.config.output_folder, f"{self.config.project_name}.mp4"
+        )
+
+        if n == 1:
+            shutil.copy2(part_videos[0], output_file)
+        else:
+            concat_txt = os.path.join(self.temp_dir, "parts_list.txt")
+            with open(concat_txt, "w", encoding="utf-8") as f:
+                for pv in part_videos:
+                    f.write(f"file '{pv.replace(chr(92), '/')}'\n")
+            cat_res = self._run_ffmpeg(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", concat_txt, "-c", "copy", output_file],
+                timeout=3600,
+            )
+            if not cat_res["ok"]:
+                return self._fail(f"Ghép video thất bại: {cat_res['error']}")
+
+        # Delete individual part files (they are already in temp_dir, but be explicit)
+        for pv in part_videos:
+            try:
+                if os.path.isfile(pv):
+                    os.remove(pv)
+            except Exception:
+                pass
+
+        # Phase 3 — subtitle / intro-outro on the merged video
+        # (watermark already applied per-part to preserve quality per segment)
+        current = output_file
+
+        if self.config.subtitle_srt_path and self.config.subtitle_preset != "none":
+            sub_path = os.path.join(self.temp_dir, "subtitled.mp4")
+            sub = self.apply_subtitles(current, sub_path)
+            if sub["ok"] and not sub.get("skipped"):
+                current = sub_path
+
+        if self.config.intro_path or self.config.outro_path:
+            io_path = os.path.join(self.temp_dir, "with_io.mp4")
+            io = self.add_intro_outro(current, io_path)
+            if io["ok"] and not io.get("skipped"):
+                current = io_path
+
+        if current != output_file:
+            shutil.move(current, output_file)
+
+        file_size_mb = round(os.path.getsize(output_file) / (1024 * 1024), 2)
+        duration     = _probe_duration(output_file)
+        total_time   = round(time.time() - self._start_time, 2)
+
+        self.cleanup_temp()
+        self.progress.status           = "completed"
+        self.progress.overall_progress = 1.0
+        self._notify_progress()
+        self._log(f"Multi-part hoàn thành → {output_file}")
+        self._cleanup_subtitle_files()
+        self._logger.close()
+
+        return {
+            "ok":              True,
+            "status":          "completed",
+            "output_path":     output_file,
+            "file_size_mb":    file_size_mb,
+            "duration":        duration,
+            "segment_count":   n,
+            "failed_segments": 0,
+            "render_time":     total_time,
+        }
+
     # ── full pipeline ─────────────────────────────────────────────────────
 
     def run(self) -> dict:
@@ -1275,6 +1429,10 @@ class VideoProcessor:
         hw = self._detect_hw()
         self._log(f"Pipeline started — project: {self.config.project_name}, hw_encoder: {hw}")
         self._notify_progress()
+
+        # Multi-part mode: delegate to separate pipeline
+        if self.config.render_parts:
+            return self._run_multi_part()
 
         # Phase 0
         self.progress.current_phase = "preparing"

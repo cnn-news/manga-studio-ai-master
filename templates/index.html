@@ -83,61 +83,54 @@
     <!-- ── SIDEBAR ────────────────────────────────────────────────────── -->
     <aside class="sidebar">
 
-      <!-- Tab buttons -->
-      <div class="sidebar-tabs">
-        <div class="sidebar-tab active" id="stab-settings" onclick="switchSideTab('settings')">
-          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-          Cài Đặt
-        </div>
-        <div class="sidebar-tab" id="stab-history" onclick="switchSideTab('history')">
-          <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
-          Lịch Sử
-        </div>
-      </div>
+      <!-- ── 3 panels hiển thị song song ─────────────────────── -->
+      <div class="panels-row">
 
-      <!-- ── Tab 1: Cài đặt — 2 cột ──────────────────────────────── -->
-      <div class="tab-pane active" id="tab-settings">
-        <div class="settings-cols">
+        <!-- ░░ Panel 1: Videos ░░ -->
+        <div class="s-panel" id="panel-videos">
+          <!-- Fixed add-video button — not inside scrollable body -->
+          <div class="panel-add-bar">
+            <span id="seg-count-badge" class="hidden" style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:.7rem;font-weight:700;line-height:1.6">1/10</span>
+            <div class="btn-sm btn-add-full" id="btn-add-segment" onclick="App.addSegment()" title="Thêm video (tối đa 10)">+ Thêm video</div>
+          </div>
+          <div class="s-panel-body">
+            <div id="extra-segments-container"></div>
+          </div><!-- /s-panel-body videos -->
+        </div><!-- /panel-videos -->
 
-          <!-- ════════════ CỘT TRÁI ════════════ -->
-          <div class="settings-col">
+        <!-- ░░ Panel 2: Hiệu ứng ░░ -->
+        <div class="s-panel" id="panel-effects">
+          <div class="s-panel-hdr">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;flex-shrink:0"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+            Hiệu ứng
+          </div>
+          <div class="s-panel-body">
 
             <!-- § Thư Mục -->
-            <div class="settings-section">
+            <div class="settings-section" id="section-folders">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                 <span class="section-title">Thư Mục</span>
               </div>
               <div class="section-body">
-                <div class="field-row">
-                  <label class="field-label">Ảnh manga</label>
-                  <div class="input-with-btn">
-                    <input type="text" class="field-input" id="image-folder" placeholder="D:\manga\images" oninput="App.onImageFolderChange()">
-                    <div class="btn-browse" onclick="App.browseFolder('image-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
-                  </div>
+                <!-- Hidden main inputs — kept for backward compat, synced from segment cards -->
+                <div id="main-img-row" style="display:none">
+                  <input type="text" class="field-input" id="image-folder" placeholder="D:\manga\images">
                   <div class="folder-msg" id="img-folder-msg"></div>
                 </div>
-                <div class="field-row">
-                  <label class="field-label">
-                    Audio
-                    <span class="info-icon" data-tooltip="Thư mục: mỗi ảnh ghép với 1 file audio cùng tên (001.jpg ↔ 001.mp3). File đơn: 1 file audio chia đều cho tất cả ảnh, tổng thời lượng video = thời lượng audio.">i</span>
-                  </label>
-                  <!-- Mode toggle -->
-                  <div class="sub-source-row" style="margin-bottom:6px">
-                    <div class="sub-source-btn" id="audio-mode-folder" onclick="App.setAudioMode('folder')">📁 Thư mục</div>
-                    <div class="sub-source-btn active" id="audio-mode-file" onclick="App.setAudioMode('file')">🎵 File đơn</div>
+                <div id="main-aud-row" style="display:none">
+                  <div id="audio-folder-wrap" class="hidden">
+                    <input type="text" class="field-input" id="audio-folder">
                   </div>
-                  <!-- Folder mode input -->
-                  <div id="audio-folder-wrap" class="input-with-btn">
-                    <input type="text" class="field-input" id="audio-folder" placeholder="D:\manga\audio" oninput="App.onAudioFolderChange()">
-                    <div class="btn-browse" onclick="App.browseFolder('audio-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
-                  </div>
-                  <!-- Single file mode input -->
-                  <div id="audio-file-wrap" class="input-with-btn hidden">
-                    <input type="text" class="field-input" id="audio-file" placeholder="D:\manga\audio.mp3" oninput="App.onSingleAudioFileChange()">
-                    <div class="btn-browse" onclick="App.browseAudioFile()"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                  <div id="audio-file-wrap">
+                    <input type="text" class="field-input" id="audio-file">
                   </div>
                   <div class="folder-msg" id="aud-folder-msg"></div>
+                </div>
+                <!-- (audio mode kept active=file by default) -->
+                <div style="display:none">
+                  <div id="audio-mode-folder"></div>
+                  <div id="audio-mode-file" class="active"></div>
                 </div>
                 <div class="field-row">
                   <label class="field-label">Xuất video</label>
@@ -146,11 +139,12 @@
                     <div class="btn-browse" onclick="App.browseFolder('output-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
                   </div>
                 </div>
+
               </div>
-            </div>
+            </div><!-- /section-folders -->
 
             <!-- § Hiệu Ứng Hình Ảnh -->
-            <div class="settings-section">
+            <div class="settings-section" id="section-effects">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
                 <span class="section-title">Hiệu Ứng Hình Ảnh</span>
@@ -198,18 +192,18 @@
                 </div>
                 <div class="field-row">
                   <label class="field-label">
-                    Scale ảnh <span class="field-value" id="image-scale-val">80%</span>
+                    Scale ảnh <span class="field-value" id="image-scale-val">70%</span>
                     <span class="info-icon" data-tooltip="Thu nhỏ ảnh trong khung hình. Khi &lt; 100%, phần nền sẽ là blur của chính ảnh đó thay vì màu đen.">i</span>
                   </label>
                   <input type="range" class="field-range" id="image-scale"
-                         min="40" max="100" step="5" value="80"
+                         min="40" max="100" step="5" value="70"
                          oninput="document.getElementById('image-scale-val').textContent=this.value+'%'">
                 </div>
               </div>
             </div>
 
             <!-- § Phụ Đề -->
-            <div class="settings-section">
+            <div class="settings-section" id="section-subtitle">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
                 <span class="section-title">Phụ Đề</span>
@@ -289,13 +283,19 @@
               </div>
             </div>
 
-          </div><!-- /col-left -->
+          </div><!-- /s-panel-body effects -->
+        </div><!-- /panel-effects -->
 
-          <!-- ════════════ CỘT PHẢI ════════════ -->
-          <div class="settings-col">
+        <!-- ░░ Panel 3: Cài đặt ░░ -->
+        <div class="s-panel" id="panel-config">
+          <div class="s-panel-hdr">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;flex-shrink:0"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
+            Cài đặt
+          </div>
+          <div class="s-panel-body">
 
             <!-- § Dự Án -->
-            <div class="settings-section">
+            <div class="settings-section" id="section-project">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
                 <span class="section-title">Dự Án &amp; Xuất</span>
@@ -371,7 +371,7 @@
             </div>
 
             <!-- § Nâng Cao -->
-            <div class="settings-section">
+            <div class="settings-section" id="section-advanced">
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
                 <span class="section-title">Nâng Cao</span>
@@ -473,25 +473,10 @@
               </div>
             </div>
 
-          </div><!-- /col-right -->
+          </div><!-- /s-panel-body config -->
+        </div><!-- /panel-config -->
 
-        </div><!-- /settings-cols -->
-      </div><!-- /tab-pane#settings -->
-
-      <!-- ── Tab 2: Lịch sử ────────────────────────────────────────── -->
-      <div class="tab-pane" id="tab-history">
-        <div class="history-toolbar">
-          <div class="btn-sm" onclick="App.loadHistory()">Làm mới</div>
-          <span class="history-count" id="history-count">—</span>
-          <div class="btn-sm btn-danger-sm" onclick="App.clearAllHistory()">Xoá tất cả</div>
-        </div>
-        <div class="history-list" id="history-list">
-          <div class="history-empty" id="history-empty">
-            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
-            <p>Chưa có lịch sử render</p>
-          </div>
-        </div>
-      </div>
+      </div><!-- /panels-row -->
 
       <!-- ── Sidebar Footer ────────────────────────────────────────── -->
       <div class="sidebar-footer">
@@ -679,10 +664,6 @@
           <div class="btn-action" onclick="App.newRender()">
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             Render mới
-          </div>
-          <div class="btn-action" onclick="switchSideTab('history')">
-            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
-            Lịch sử
           </div>
         </div>
 
