@@ -70,6 +70,18 @@
       <span class="header-version">v1.0.0</span>
     </div>
     <div class="header-right">
+      <!-- Reset + Render buttons (moved from sidebar footer) -->
+      <div class="btn-reset header-btn-reset" id="btn-reset" onclick="App.resetSettings()" title="Reset tất cả về mặc định">
+        <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+        <span>Reset</span>
+      </div>
+      <div class="btn-render header-btn-render" id="btn-render" onclick="App.startRender()">
+        <svg id="btn-render-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="btn-render-spinner" class="hidden btn-spinner" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 56" stroke-linecap="round"/>
+        </svg>
+        <span id="btn-render-label">Bắt Đầu Render</span>
+      </div>
       <div class="btn-icon" id="btn-theme" onclick="toggleTheme()" title="Chuyển giao diện sáng/tối">
         <svg class="icon-dark" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
         <svg class="icon-light hidden" viewBox="0 0 24 24"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41zm1.06-12.37l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41s-1.03-.39-1.41 0zM7.05 18.36l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41s-1.03-.39-1.41 0z"/></svg>
@@ -106,42 +118,26 @@
           </div>
           <div class="s-panel-body">
 
-            <!-- § Thư Mục -->
-            <div class="settings-section" id="section-folders">
-              <div class="section-header">
-                <svg class="section-icon" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-                <span class="section-title">Thư Mục</span>
+            <!-- Hidden inputs — backward compat, synced from segment cards -->
+            <div id="section-folders" style="display:none">
+              <div id="main-img-row">
+                <input type="text" class="field-input" id="image-folder" placeholder="D:\manga\images">
+                <div class="folder-msg" id="img-folder-msg"></div>
               </div>
-              <div class="section-body">
-                <!-- Hidden main inputs — kept for backward compat, synced from segment cards -->
-                <div id="main-img-row" style="display:none">
-                  <input type="text" class="field-input" id="image-folder" placeholder="D:\manga\images">
-                  <div class="folder-msg" id="img-folder-msg"></div>
+              <div id="main-aud-row">
+                <div id="audio-folder-wrap" class="hidden">
+                  <input type="text" class="field-input" id="audio-folder">
                 </div>
-                <div id="main-aud-row" style="display:none">
-                  <div id="audio-folder-wrap" class="hidden">
-                    <input type="text" class="field-input" id="audio-folder">
-                  </div>
-                  <div id="audio-file-wrap">
-                    <input type="text" class="field-input" id="audio-file">
-                  </div>
-                  <div class="folder-msg" id="aud-folder-msg"></div>
+                <div id="audio-file-wrap">
+                  <input type="text" class="field-input" id="audio-file">
                 </div>
-                <!-- (audio mode kept active=file by default) -->
-                <div style="display:none">
-                  <div id="audio-mode-folder"></div>
-                  <div id="audio-mode-file" class="active"></div>
-                </div>
-                <div class="field-row">
-                  <label class="field-label">Xuất video</label>
-                  <div class="input-with-btn">
-                    <input type="text" class="field-input" id="output-folder" placeholder="D:\" value="D:/" oninput="App.validateFolders()">
-                    <div class="btn-browse" onclick="App.browseFolder('output-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
-                  </div>
-                </div>
-
+                <div class="folder-msg" id="aud-folder-msg"></div>
               </div>
-            </div><!-- /section-folders -->
+              <div>
+                <div id="audio-mode-folder"></div>
+                <div id="audio-mode-file" class="active"></div>
+              </div>
+            </div>
 
             <!-- § Hiệu Ứng Hình Ảnh -->
             <div class="settings-section" id="section-effects">
@@ -355,6 +351,13 @@
                   <input type="text" class="field-input" id="project-name" placeholder="my-manga-video">
                 </div>
                 <div class="field-row">
+                  <label class="field-label">Xuất video</label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="output-folder" placeholder="D:\" value="D:/" oninput="App.validateFolders()">
+                    <div class="btn-browse" onclick="App.browseFolder('output-folder')"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
+                  </div>
+                </div>
+                <div class="field-row">
                   <label class="field-label">Độ phân giải</label>
                   <select class="field-select" id="resolution">
                     <option value="1920x1080" selected>1920×1080 (Full HD)</option>
@@ -418,32 +421,43 @@
                   <input type="text" class="field-input" id="watermark-text" placeholder="© Your Channel" value="Manhwa Recap Hub" oninput="App._toggleWmStyleRows()">
                 </div>
                 <div class="field-row" id="watermark-style-row" style="display:none">
-                  <label class="field-label">Màu chữ &amp; nền</label>
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <!-- Color presets -->
-                    <div style="display:flex;gap:4px">
-                      <div onclick="document.getElementById('watermark-color').value='#ffffff';App._syncWmColorInput()" title="Trắng"  style="width:20px;height:20px;border-radius:4px;background:#fff;border:1.5px solid var(--border);cursor:pointer"></div>
-                      <div onclick="document.getElementById('watermark-color').value='#000000';App._syncWmColorInput()" title="Đen"    style="width:20px;height:20px;border-radius:4px;background:#000;border:1.5px solid var(--border);cursor:pointer"></div>
-                      <div onclick="document.getElementById('watermark-color').value='#FFE500';App._syncWmColorInput()" title="Vàng"   style="width:20px;height:20px;border-radius:4px;background:#FFE500;border:1.5px solid var(--border);cursor:pointer"></div>
-                      <div onclick="document.getElementById('watermark-color').value='#FF6B9D';App._syncWmColorInput()" title="Hồng"   style="width:20px;height:20px;border-radius:4px;background:#FF6B9D;border:1.5px solid var(--border);cursor:pointer"></div>
-                      <div onclick="document.getElementById('watermark-color').value='#00ccff';App._syncWmColorInput()" title="Xanh"   style="width:20px;height:20px;border-radius:4px;background:#0cf;border:1.5px solid var(--border);cursor:pointer"></div>
+                  <label class="field-label">Màu chữ</label>
+                  <div class="wm-color-row">
+                    <div class="wm-swatches">
+                      <div class="wm-swatch" style="background:#fff"    onclick="document.getElementById('watermark-color').value='#ffffff';App._syncWmColorInput()" title="Trắng"></div>
+                      <div class="wm-swatch" style="background:#000"    onclick="document.getElementById('watermark-color').value='#000000';App._syncWmColorInput()" title="Đen"></div>
+                      <div class="wm-swatch" style="background:#FFE500" onclick="document.getElementById('watermark-color').value='#FFE500';App._syncWmColorInput()" title="Vàng"></div>
+                      <div class="wm-swatch" style="background:#FF6B9D" onclick="document.getElementById('watermark-color').value='#FF6B9D';App._syncWmColorInput()" title="Hồng"></div>
+                      <div class="wm-swatch" style="background:#0cf"    onclick="document.getElementById('watermark-color').value='#00ccff';App._syncWmColorInput()" title="Xanh"></div>
                     </div>
-                    <!-- Color picker -->
-                    <input type="color" id="watermark-color" value="#ff6b9d"
-                           style="width:30px;height:24px;padding:1px;border:1.5px solid var(--border);border-radius:4px;background:none;cursor:pointer"
-                           oninput="App._syncWmColorInput()">
-                    <span id="watermark-color-hex" style="font-size:.75rem;color:var(--text-secondary);min-width:52px">#ff6b9d</span>
+                    <input type="color" id="watermark-color" value="#ff6b9d" class="wm-color-picker" oninput="App._syncWmColorInput()">
+                    <span id="watermark-color-hex" class="wm-hex">#ff6b9d</span>
+                  </div>
+                </div>
+                <div class="field-row" id="watermark-bg-color-row" style="display:none">
+                  <label class="field-label">Màu nền</label>
+                  <div class="wm-color-row">
+                    <div class="wm-swatches">
+                      <div class="wm-swatch" style="background:#000"    onclick="document.getElementById('watermark-bg-color').value='#000000';App._syncWmBgColorInput()" title="Đen"></div>
+                      <div class="wm-swatch" style="background:#1a1a2e" onclick="document.getElementById('watermark-bg-color').value='#1a1a2e';App._syncWmBgColorInput()" title="Xanh đen"></div>
+                      <div class="wm-swatch" style="background:#1e1e1e" onclick="document.getElementById('watermark-bg-color').value='#1e1e1e';App._syncWmBgColorInput()" title="Xám đen"></div>
+                      <div class="wm-swatch" style="background:#fff"    onclick="document.getElementById('watermark-bg-color').value='#ffffff';App._syncWmBgColorInput()" title="Trắng"></div>
+                      <div class="wm-swatch" style="background:#7c3aed" onclick="document.getElementById('watermark-bg-color').value='#7c3aed';App._syncWmBgColorInput()" title="Tím"></div>
+                    </div>
+                    <input type="color" id="watermark-bg-color" value="#000000" class="wm-color-picker" oninput="App._syncWmBgColorInput()">
+                    <span id="watermark-bg-color-hex" class="wm-hex">#000000</span>
                   </div>
                 </div>
                 <div class="field-row" id="watermark-bg-row" style="display:none">
                   <label class="field-label">
-                    Nền watermark <span class="field-value" id="wm-bg-val">70%</span>
-                    <span class="info-icon" data-tooltip="Độ đục của hộp nền đen sau chữ watermark. 0% = không có nền, 80% = nền tối rõ.">i</span>
+                    Độ mờ nền <span class="field-value" id="wm-bg-val">70%</span>
+                    <span class="info-icon" data-tooltip="Độ đục của hộp nền sau chữ watermark. 0% = không có nền, 100% = nền đặc.">i</span>
                   </label>
                   <input type="range" class="field-range" id="watermark-bg-opacity"
                          min="0" max="100" step="5" value="70"
-                         oninput="document.getElementById('wm-bg-val').textContent=this.value+'%'">
+                         oninput="document.getElementById('wm-bg-val').textContent=this.value+'%';App._renderWmPreview()">
                 </div>
+                <canvas id="wm-preview-canvas" class="wm-preview-canvas" width="280" height="54" style="display:none"></canvas>
                 <div class="field-row">
                   <label class="field-label">
                     Video bitrate
@@ -492,23 +506,6 @@
         </div><!-- /panel-config -->
 
       </div><!-- /panels-row -->
-
-      <!-- ── Sidebar Footer ────────────────────────────────────────── -->
-      <div class="sidebar-footer">
-        <div class="sidebar-footer-row">
-          <div class="btn-reset" id="btn-reset" onclick="App.resetSettings()" title="Reset tất cả về mặc định">
-            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
-            <span>Reset</span>
-          </div>
-          <div class="btn-render" id="btn-render" onclick="App.startRender()">
-            <svg id="btn-render-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            <svg id="btn-render-spinner" class="hidden btn-spinner" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 56" stroke-linecap="round"/>
-            </svg>
-            <span id="btn-render-label">Bắt Đầu Render</span>
-          </div>
-        </div>
-      </div>
 
     </aside><!-- /sidebar -->
 

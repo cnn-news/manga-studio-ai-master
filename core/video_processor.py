@@ -90,6 +90,7 @@ class RenderConfig:
     watermark_opacity:    float      = 0.9   # text / image opacity
     watermark_scale:      float      = 0.15
     watermark_color:      str        = "#ff6b9d"  # text color (#RRGGBB or named)
+    watermark_bg_color:   str        = "#000000"  # box background color
     watermark_bg_opacity: float      = 0.7   # box background opacity (0 = none)
     intro_path:          str | None = None
     outro_path:          str | None = None
@@ -1106,7 +1107,12 @@ class VideoProcessor:
             ]
             # Optional semi-transparent box behind text
             if bg_opacity > 0.01:
-                parts.append(f"box=1:boxcolor=black@{bg_opacity:.2f}:boxborderw=8")
+                raw_bg = (self.config.watermark_bg_color or "#000000").strip()
+                if raw_bg.startswith("#") and len(raw_bg) == 7:
+                    ffmpeg_bg = "0x" + raw_bg[1:]
+                else:
+                    ffmpeg_bg = raw_bg
+                parts.append(f"box=1:boxcolor={ffmpeg_bg}@{bg_opacity:.2f}:boxborderw=8")
             parts.append(pos)
             vf = "drawtext=" + ":".join(parts)
 

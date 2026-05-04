@@ -1363,9 +1363,27 @@ img, video, canvas, iframe { max-width: 100%; }
 /* ── Header ───────────────────────────────────────────────── */
 .header-left  { display: flex; align-items: center; gap: 10px; }
 .header-center{ flex: 1; display: flex; justify-content: center; align-items: center; gap: 12px; }
-.header-right { display: flex; align-items: center; gap: 8px; }
+.header-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .header-logo-icon { width: 28px; height: 28px; fill: var(--accent); flex-shrink: 0; }
 .header-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; }
+
+/* Reset / Render buttons in header */
+.header-btn-reset {
+  min-height: 34px !important;
+  padding: 0 12px !important;
+  font-size: 0.78rem !important;
+  border-radius: var(--radius-md) !important;
+  flex-shrink: 0;
+}
+.header-btn-render {
+  width: auto !important;
+  min-width: 148px;
+  min-height: 34px !important;
+  padding: 6px 14px !important;
+  font-size: 0.82rem !important;
+  border-radius: var(--radius-md) !important;
+  flex-shrink: 0;
+}
 .status-pill  { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; background: var(--bg-elevated); border: 1px solid var(--border); font-size: 0.78rem; color: var(--text-secondary); }
 .status-dot   { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
 .status-dot.ok      { background: var(--success); }
@@ -1933,6 +1951,42 @@ img, video, canvas, iframe { max-width: 100%; }
 .toggle-xs { width: 36px; height: 20px; flex-shrink: 0; }
 .toggle-xs .toggle-track::after { width: 13px; height: 13px; top: 2.5px; left: 2.5px; }
 .toggle-xs input:checked + .toggle-track::after { transform: translateX(16px); }
+
+/* ── Watermark color rows ─────────────────────────────────── */
+.wm-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wm-swatches { display: flex; gap: 4px; }
+.wm-swatch {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: transform var(--t-fast), border-color var(--t-fast);
+}
+.wm-swatch:hover { transform: scale(1.15); border-color: var(--accent); }
+.wm-color-picker {
+  width: 30px; height: 24px;
+  padding: 1px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.wm-hex { font-size: .75rem; color: var(--text-secondary); min-width: 52px; }
+
+/* Watermark preview */
+.wm-preview-canvas {
+  width: 100%;
+  border-radius: var(--radius-md);
+  background: #111;
+  margin-top: 4px;
+  display: block;
+}
 
 /* ── Effect mode radio buttons ───────────────────────────── */
 .effect-mode-radio {

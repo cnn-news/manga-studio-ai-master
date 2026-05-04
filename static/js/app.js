@@ -236,12 +236,7 @@ async function loadSystemInfo() {
 }
 
 async function loadStats() {
-    try {
-        const d = await fetch('/api/stats').then(r => r.json());
-        setText('card-segments', d.total_renders ?? '0');
-        setText('card-duration',  d.total_duration_hours != null ? d.total_duration_hours + 'h' : '—');
-        setText('card-size',      '—');
-    } catch (_) {}
+    // DB cumulative stats — no longer overwrites per-session stat cards
 }
 
 // ─── File Picker (for intro/outro/srt) ───────────────────────────────────────
@@ -923,7 +918,8 @@ const App = {
             normalize_audio:    $('normalize-audio')?.checked ?? true,
             audio_fade:         parseFloat($('audio-fade-in')?.value) || 0.3,
             watermark_text:       $('watermark-text')?.value?.trim() || '',
-            watermark_color:      $('watermark-color')?.value || '#ffffff',
+            watermark_color:      $('watermark-color')?.value    || '#ff6b9d',
+            watermark_bg_color:   $('watermark-bg-color')?.value || '#000000',
             watermark_bg_opacity: (parseInt($('watermark-bg-opacity')?.value) || 0) / 100,
             intro_path:         $('intro-path')?.value     || null,
             outro_path:         $('outro-path')?.value     || null,
@@ -1101,10 +1097,20 @@ const App = {
         const fo = document.getElementById('audio-fade-out-val'); if (fo) fo.textContent = '1.0s';
         setVal('watermark-text', 'Manhwa Recap Hub');
         setVal('watermark-color', '#ff6b9d');
+        setVal('watermark-bg-color', '#000000');
         setVal('watermark-bg-opacity', '70');
-        const wmhex = $('watermark-color-hex');    if (wmhex)  wmhex.textContent  = '#ff6b9d';
-        const wmbgv = $('wm-bg-val');              if (wmbgv)  wmbgv.textContent  = '70%';
+        const wmhex   = $('watermark-color-hex');    if (wmhex)   wmhex.textContent   = '#ff6b9d';
+        const wmbghex = $('watermark-bg-color-hex'); if (wmbghex) wmbghex.textContent = '#000000';
+        const wmbgv   = $('wm-bg-val');              if (wmbgv)   wmbgv.textContent   = '70%';
         this._toggleWmStyleRows();
+        // Stat cards — reset first before re-rendering segments
+        setText('card-total-images', '—');
+        setText('card-segments', '—');
+        setText('card-duration', '—');
+        setText('card-size', '—');
+        // Render button
+        const rbtn = document.getElementById('btn-render');
+        if (rbtn) rbtn.classList.add('disabled');
         this._segments = [];
         this._renderSegmentList();
         setVal('video-bitrate',  '8M');
@@ -1116,14 +1122,6 @@ const App = {
         if (imgMsg) { imgMsg.innerHTML = ''; imgMsg.className = 'folder-msg'; }
         const audMsg = document.getElementById('aud-folder-msg');
         if (audMsg) { audMsg.innerHTML = ''; audMsg.className = 'folder-msg'; }
-        // Stat cards
-        setText('card-total-images', '—');
-        setText('card-segments', '—');
-        setText('card-duration', '—');
-        setText('card-size', '—');
-        // Render button
-        const rbtn = document.getElementById('btn-render');
-        if (rbtn) rbtn.classList.add('disabled');
         toast('Đã reset tất cả về mặc định.', 'success');
     },
 
@@ -1315,15 +1313,41 @@ const App = {
         this.validateSegment(i);
     },
 
+    // Aggregate stats from all segments → update stat cards
+    _updateAggregateStats() {
+        let totalImages   = 0;
+        let totalDuration = 0;
+        let validSegs     = 0;
+        for (const seg of this._segments) {
+            if ((seg.img_count || 0) > 0)      totalImages   += seg.img_count;
+            if ((seg.audio_duration || 0) > 0) { totalDuration += seg.audio_duration; validSegs++; }
+        }
+        setText('card-total-images', totalImages   > 0 ? totalImages             : '—');
+        setText('card-segments',     validSegs     > 0 ? validSegs               : '—');
+        setText('card-duration',     totalDuration > 0 ? _fmtDur(totalDuration)  : '—');
+        if (totalDuration > 0) {
+            const bps = (parseFloat(document.getElementById('video-bitrate')?.value || '8') || 8) * 1_000_000;
+            const mb  = Math.round((bps * totalDuration) / (8 * 1024 * 1024));
+            setText('card-size', mb + ' MB');
+        } else {
+            setText('card-size', '—');
+        }
+    },
+
     // Per-card validation (image folder + audio file)
     async validateSegment(i) {
-        const seg     = this._segments[i];
+        const seg      = this._segments[i];
         const statusEl = document.getElementById(`seg-status-${i}`);
         if (!seg || !statusEl) return;
 
         const imgPath = seg.image_folder?.trim();
         const audPath = seg.audio_file?.trim();
-        if (!imgPath && !audPath) { statusEl.innerHTML = ''; statusEl.className = 'folder-msg'; return; }
+        if (!imgPath && !audPath) {
+            statusEl.innerHTML = ''; statusEl.className = 'folder-msg';
+            seg.img_count = 0; seg.audio_duration = 0;
+            this._updateAggregateStats();
+            return;
+        }
 
         const parts = [];
         if (imgPath) {
@@ -1332,11 +1356,13 @@ const App = {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: imgPath, type: 'image' }),
                 }).then(r => r.json());
+                seg.img_count = (d.ok && d.count > 0) ? d.count : 0;
                 parts.push(d.ok && d.count > 0
                     ? `✅ ${d.count} ảnh`
                     : `❌ ${(d.errors||[])[0] || 'Không có ảnh'}`);
-            } catch { parts.push('❌ Lỗi'); }
-        }
+            } catch { parts.push('❌ Lỗi'); seg.img_count = 0; }
+        } else { seg.img_count = 0; }
+
         if (audPath) {
             try {
                 const d = await fetch('/api/audio/file/analyze', {
@@ -1344,14 +1370,17 @@ const App = {
                     body: JSON.stringify({ path: audPath }),
                 }).then(r => r.json());
                 if (d.ok) {
+                    seg.audio_duration = d.duration || 0;
                     const s = Math.round(d.duration || 0);
                     parts.push(`🎵 ${Math.floor(s/60)}m${s % 60}s`);
-                } else { parts.push('❌ Audio lỗi'); }
-            } catch { parts.push('❌ Lỗi'); }
-        }
+                } else { seg.audio_duration = 0; parts.push('❌ Audio lỗi'); }
+            } catch { parts.push('❌ Lỗi'); seg.audio_duration = 0; }
+        } else { seg.audio_duration = 0; }
+
         const hasErr = parts.some(p => p.startsWith('❌'));
         statusEl.innerHTML = parts.join(' · ');
         statusEl.className = `folder-msg ${hasErr ? 'err' : 'ok'}`;
+        this._updateAggregateStats();
     },
 
     addSegment() {
@@ -1425,14 +1454,63 @@ const App = {
     _syncWmColorInput() {
         const v = $('watermark-color')?.value || '#ffffff';
         const hex = $('watermark-color-hex'); if (hex) hex.textContent = v;
+        this._renderWmPreview();
+    },
+
+    _syncWmBgColorInput() {
+        const v = $('watermark-bg-color')?.value || '#000000';
+        const hex = $('watermark-bg-color-hex'); if (hex) hex.textContent = v;
+        this._renderWmPreview();
+    },
+
+    _renderWmPreview() {
+        const canvas = $('wm-preview-canvas');
+        if (!canvas) return;
+        const text    = $('watermark-text')?.value?.trim() || '';
+        if (!text) return;
+        const ctx     = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const fgColor = $('watermark-color')?.value    || '#ff6b9d';
+        const bgColor = $('watermark-bg-color')?.value || '#000000';
+        const bgOp    = (parseInt($('watermark-bg-opacity')?.value) || 0) / 100;
+
+        // Video background
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, W, H);
+
+        // Watermark text setup
+        const fs = 15;
+        ctx.font = `600 ${fs}px Inter, sans-serif`;
+        const tw = ctx.measureText(text).width;
+        const pad = 8;
+        const x = W - tw - pad * 2 - 8;
+        const y = H - fs - pad - 6;
+
+        // Background box
+        if (bgOp > 0) {
+            const r = parseInt(bgColor.slice(1,3),16), g = parseInt(bgColor.slice(3,5),16), b = parseInt(bgColor.slice(5,7),16);
+            ctx.fillStyle = `rgba(${r},${g},${b},${bgOp})`;
+            ctx.beginPath();
+            ctx.roundRect(x - pad, y - pad, tw + pad * 2, fs + pad * 1.5, 4);
+            ctx.fill();
+        }
+
+        // Text
+        ctx.fillStyle = fgColor;
+        ctx.fillText(text, x, y + fs - 2);
     },
 
     _toggleWmStyleRows() {
         const hasText = !!($('watermark-text')?.value?.trim());
-        const styleRow = $('watermark-style-row');
-        const bgRow    = $('watermark-bg-row');
-        if (styleRow) styleRow.style.display = hasText ? '' : 'none';
-        if (bgRow)    bgRow.style.display    = hasText ? '' : 'none';
+        const styleRow    = $('watermark-style-row');
+        const bgColorRow  = $('watermark-bg-color-row');
+        const bgRow       = $('watermark-bg-row');
+        const preview     = $('wm-preview-canvas');
+        if (styleRow)   styleRow.style.display   = hasText ? '' : 'none';
+        if (bgColorRow) bgColorRow.style.display = hasText ? '' : 'none';
+        if (bgRow)      bgRow.style.display      = hasText ? '' : 'none';
+        if (preview)    preview.style.display    = hasText ? 'block' : 'none';
+        if (hasText) this._renderWmPreview();
     },
 
     // ── Effect toggle ──────────────────────────────────────────
@@ -1897,7 +1975,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Apply default UI states
     App.switchEffectMode('scroll');    // Cuộn dọc ON (default)
-    App._toggleWmStyleRows();          // Watermark style rows visible
+    App._toggleWmStyleRows();          // Watermark rows + initial preview
     App._syncSeg0ToMainInputs();       // Keep hidden inputs in sync
     const _subDef = $('subtitle-enabled');
     if (_subDef) { _subDef.checked = true; App.toggleSubtitle(); } // Phụ đề ON
