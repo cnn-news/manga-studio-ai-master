@@ -1934,6 +1934,54 @@ img, video, canvas, iframe { max-width: 100%; }
 .toggle-xs .toggle-track::after { width: 13px; height: 13px; top: 2.5px; left: 2.5px; }
 .toggle-xs input:checked + .toggle-track::after { transform: translateX(16px); }
 
+/* ── Effect mode radio buttons ───────────────────────────── */
+.effect-mode-radio {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.effect-radio-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font-size: 0.77rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: border-color var(--t-fast), background var(--t-fast), color var(--t-fast);
+  user-select: none;
+  white-space: nowrap;
+}
+.effect-radio-btn input[type="radio"] { display: none; }
+.effect-radio-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent-light);
+  font-weight: 600;
+}
+
+/* ── Sub-header inside effect pane ───────────────────────── */
+.mode-sub-hdr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 6px;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-top: 1px solid var(--border);
+}
+.mode-sub-hdr span:first-child { flex: 1; }
+
 /* ── Effect / Transition button grid ─────────────────────── */
 .fx-grid {
   display: grid;

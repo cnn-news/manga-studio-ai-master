@@ -1067,15 +1067,16 @@ const App = {
         setVal('resolution', '1920x1080');
         setVal('fps', '60');
         setVal('quality', 'balanced');
-        // Scroll mode
-        const scrollMode = document.getElementById('scroll-mode');
-        if (scrollMode) { scrollMode.checked = true; this.toggleScrollMode(); }
+        // Effect mode — reset to Cuộn dọc
+        const scrollRadio = document.getElementById('effect-mode-scroll');
+        if (scrollRadio) scrollRadio.checked = true;
+        this.switchEffectMode('scroll');
         // Effect
         const effRandom = document.getElementById('effect-random');
         if (effRandom) { effRandom.checked = true; this.toggleEffectRandom(); }
         setVal('effect-speed', 'normal');
-        setVal('image-scale', '80');
-        const isv = document.getElementById('image-scale-val'); if (isv) isv.textContent = '80%';
+        setVal('image-scale', '70');
+        const isv = document.getElementById('image-scale-val'); if (isv) isv.textContent = '70%';
         document.querySelectorAll('.fx-btn[data-effect]').forEach(b => b.classList.toggle('active', b.dataset.effect === 'zoom_pulse'));
         // Transition
         const transRandom = document.getElementById('transition-random');
@@ -1257,34 +1258,26 @@ const App = {
         } catch (e) { console.warn('loadHistory:', e.message); }
     },
 
-    // ── Scroll mode toggle ────────────────────────────────────
+    // ── Effect mode switcher (radio: 'scroll' | 'transition') ────
+    switchEffectMode(mode) {
+        const isScroll = mode === 'scroll';
+        // Sync hidden #scroll-mode checkbox (read by startRender)
+        const cb = document.getElementById('scroll-mode');
+        if (cb) cb.checked = isScroll;
+        // Update radio active classes
+        document.getElementById('radio-scroll-label')?.classList.toggle('active', isScroll);
+        document.getElementById('radio-transition-label')?.classList.toggle('active', !isScroll);
+        // Show/hide panes
+        document.getElementById('mode-scroll-pane')?.classList.toggle('hidden', !isScroll);
+        document.getElementById('mode-transition-pane')?.classList.toggle('hidden', isScroll);
+        // In transition mode, restore effect selector state
+        if (!isScroll) this.toggleEffectRandom();
+    },
+
+    // ── Scroll mode toggle (kept for backward compat) ─────────
     toggleScrollMode() {
         const on = document.getElementById('scroll-mode')?.checked;
-        const banner = document.getElementById('scroll-mode-banner');
-        if (banner) banner.classList.toggle('hidden', !on);
-
-        // When scroll is ON: grey-out the random-effect toggle and hide transition section
-        const effRandomInput   = document.getElementById('effect-random');
-        const effRandomWrap    = document.getElementById('effect-random-wrap');
-        const effRandomLabel   = document.getElementById('effect-random-label');
-        const effSpeedRow      = document.getElementById('effect-speed-row');
-        const transitionSection = document.getElementById('transition-section');
-
-        if (on) {
-            if (effRandomInput) { effRandomInput.checked = true; effRandomInput.disabled = true; }
-            if (effRandomWrap)   effRandomWrap.style.opacity   = '0.35';
-            if (effRandomLabel)  effRandomLabel.style.opacity  = '0.35';
-            if (effSpeedRow)     effSpeedRow.style.display     = 'none';
-            if (transitionSection) transitionSection.style.display = 'none';
-            document.getElementById('effect-selector')?.classList.add('hidden');
-        } else {
-            if (effRandomInput) effRandomInput.disabled = false;
-            if (effRandomWrap)   effRandomWrap.style.opacity   = '';
-            if (effRandomLabel)  effRandomLabel.style.opacity  = '';
-            if (effSpeedRow)     effSpeedRow.style.display      = '';
-            if (transitionSection) transitionSection.style.display = '';
-            this.toggleEffectRandom();
-        }
+        this.switchEffectMode(on ? 'scroll' : 'transition');
     },
 
     // ── Multi-segment management ──────────────────────────────
@@ -1903,7 +1896,7 @@ document.addEventListener('DOMContentLoaded', () => {
     App.renderSubPreview('karaoke');
 
     // Apply default UI states
-    App.toggleScrollMode();            // Cuộn dọc ON
+    App.switchEffectMode('scroll');    // Cuộn dọc ON (default)
     App._toggleWmStyleRows();          // Watermark style rows visible
     App._syncSeg0ToMainInputs();       // Keep hidden inputs in sync
     const _subDef = $('subtitle-enabled');

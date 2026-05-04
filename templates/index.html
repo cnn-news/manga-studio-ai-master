@@ -148,48 +148,13 @@
               <div class="section-header">
                 <svg class="section-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
                 <span class="section-title">Hiệu Ứng Hình Ảnh</span>
-                <span class="toggle-label-sm" id="effect-random-label">Ngẫu nhiên</span>
-                <label class="toggle-switch toggle-xs" id="effect-random-wrap">
-                  <input type="checkbox" id="effect-random" checked onchange="App.toggleEffectRandom()">
-                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                </label>
               </div>
               <div class="section-body">
 
-                <!-- Scroll mode toggle -->
-                <div class="field-row field-row-toggle">
-                  <label class="field-label">
-                    Cuộn dọc (Webtoon)
-                    <span class="info-icon" data-tooltip="Nối liền mạch tất cả ảnh thành dải dọc và tạo hiệu ứng cuộn từ trên xuống dưới — giống đọc webtoon. Khi bật: tắt hiệu ứng ngẫu nhiên &amp; chuyển cảnh.">i</span>
-                  </label>
-                  <label class="toggle-switch">
-                    <input type="checkbox" id="scroll-mode" checked onchange="App.toggleScrollMode()">
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                  </label>
-                </div>
-                <div id="scroll-mode-banner" class="hidden" style="padding:6px 10px;background:var(--bg-secondary);border-radius:var(--radius-md);border:1px solid var(--accent);font-size:.77rem;color:var(--accent-light);margin-bottom:6px;line-height:1.5">
-                  ↕ Ảnh được ghép dọc &amp; cuộn liên tục — hiệu ứng Ken Burns và chuyển cảnh bị tắt
-                </div>
+                <!-- hidden checkbox — scroll_mode value kept in sync by radio -->
+                <input type="checkbox" id="scroll-mode" checked style="display:none">
 
-                <!-- Effect picker — ẩn khi random=ON hoặc scroll=ON -->
-                <div id="effect-selector" class="hidden">
-                  <label class="field-label" style="margin-bottom:4px">Chọn hiệu ứng</label>
-                  <div class="fx-grid">
-                    <div class="fx-btn active" data-effect="zoom_pulse"     onclick="App.selectEffect(this)"><span class="fx-icon">🔍</span><span>Zoom Pulse</span></div>
-                    <div class="fx-btn"         data-effect="pan_horizontal" onclick="App.selectEffect(this)"><span class="fx-icon">↔️</span><span>Pan Ngang</span></div>
-                    <div class="fx-btn"         data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
-                    <div class="fx-btn"         data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
-                    <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
-                  </div>
-                </div>
-                <div id="effect-speed-row" class="field-row">
-                  <label class="field-label">Tốc độ hiệu ứng</label>
-                  <select class="field-select" id="effect-speed">
-                    <option value="slow">Chậm</option>
-                    <option value="normal" selected>Thường</option>
-                    <option value="fast">Nhanh</option>
-                  </select>
-                </div>
+                <!-- Scale ảnh — always visible -->
                 <div class="field-row">
                   <label class="field-label">
                     Scale ảnh <span class="field-value" id="image-scale-val">70%</span>
@@ -199,6 +164,90 @@
                          min="40" max="100" step="5" value="70"
                          oninput="document.getElementById('image-scale-val').textContent=this.value+'%'">
                 </div>
+
+                <!-- Mode radio buttons -->
+                <div class="effect-mode-radio">
+                  <label class="effect-radio-btn active" id="radio-scroll-label">
+                    <input type="radio" name="effect-mode" value="scroll" id="effect-mode-scroll"
+                           onchange="App.switchEffectMode('scroll')" checked>
+                    ↕ Cuộn dọc
+                  </label>
+                  <label class="effect-radio-btn" id="radio-transition-label">
+                    <input type="radio" name="effect-mode" value="transition" id="effect-mode-transition"
+                           onchange="App.switchEffectMode('transition')">
+                    ✨ Chuyển cảnh
+                  </label>
+                </div>
+
+                <!-- Pane: Cuộn dọc (default visible) -->
+                <div id="mode-scroll-pane">
+                  <div id="scroll-mode-banner" style="padding:6px 10px;background:var(--bg-secondary);border-radius:var(--radius-md);border:1px solid var(--accent);font-size:.77rem;color:var(--accent-light);line-height:1.5">
+                    ↕ Ảnh được ghép dọc &amp; cuộn liên tục — hiệu ứng Ken Burns và chuyển cảnh bị tắt
+                  </div>
+                </div>
+
+                <!-- Pane: Chuyển cảnh (hidden by default) -->
+                <div id="mode-transition-pane" class="hidden">
+
+                  <!-- Sub-section: Hiệu ứng -->
+                  <div class="mode-sub-hdr">
+                    <span>Hiệu ứng Ken Burns</span>
+                    <span class="toggle-label-sm" id="effect-random-label">Ngẫu nhiên</span>
+                    <label class="toggle-switch toggle-xs" id="effect-random-wrap">
+                      <input type="checkbox" id="effect-random" checked onchange="App.toggleEffectRandom()">
+                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                  <div id="effect-selector" class="hidden">
+                    <label class="field-label" style="margin-bottom:4px">Chọn hiệu ứng</label>
+                    <div class="fx-grid">
+                      <div class="fx-btn active" data-effect="zoom_pulse"     onclick="App.selectEffect(this)"><span class="fx-icon">🔍</span><span>Zoom Pulse</span></div>
+                      <div class="fx-btn"         data-effect="pan_horizontal" onclick="App.selectEffect(this)"><span class="fx-icon">↔️</span><span>Pan Ngang</span></div>
+                      <div class="fx-btn"         data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
+                      <div class="fx-btn"         data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
+                      <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
+                    </div>
+                  </div>
+                  <div id="effect-speed-row" class="field-row">
+                    <label class="field-label">Tốc độ hiệu ứng</label>
+                    <select class="field-select" id="effect-speed">
+                      <option value="slow">Chậm</option>
+                      <option value="normal" selected>Thường</option>
+                      <option value="fast">Nhanh</option>
+                    </select>
+                  </div>
+
+                  <!-- Sub-section: Chuyển cảnh (moved from panel 3) -->
+                  <div class="mode-sub-hdr">
+                    <span>Chuyển cảnh</span>
+                    <span class="toggle-label-sm">Ngẫu nhiên</span>
+                    <label class="toggle-switch toggle-xs">
+                      <input type="checkbox" id="transition-random" checked onchange="App.toggleTransitionRandom()">
+                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                  <div id="transition-selector" class="hidden">
+                    <label class="field-label" style="margin-bottom:4px">Chọn chuyển cảnh</label>
+                    <div class="fx-grid">
+                      <div class="fx-btn active" data-transition="fade_black"      onclick="App.selectTransition(this)"><span class="fx-icon">⬛</span><span>Fade Đen</span></div>
+                      <div class="fx-btn"         data-transition="fade_white"      onclick="App.selectTransition(this)"><span class="fx-icon">⬜</span><span>Fade Trắng</span></div>
+                      <div class="fx-btn"         data-transition="cross_dissolve"  onclick="App.selectTransition(this)"><span class="fx-icon">🔀</span><span>Dissolve</span></div>
+                      <div class="fx-btn"         data-transition="slide_left"      onclick="App.selectTransition(this)"><span class="fx-icon">◀️</span><span>Slide ←</span></div>
+                      <div class="fx-btn"         data-transition="slide_right"     onclick="App.selectTransition(this)"><span class="fx-icon">▶️</span><span>Slide →</span></div>
+                      <div class="fx-btn"         data-transition="zoom_transition" onclick="App.selectTransition(this)"><span class="fx-icon">🔭</span><span>Zoom</span></div>
+                    </div>
+                  </div>
+                  <div class="field-row">
+                    <label class="field-label">Thời lượng chuyển cảnh</label>
+                    <select class="field-select" id="transition-duration">
+                      <option value="0.3">0.3 giây</option>
+                      <option value="0.5" selected>0.5 giây</option>
+                      <option value="1.0">1.0 giây</option>
+                    </select>
+                  </div>
+
+                </div><!-- /mode-transition-pane -->
+
               </div>
             </div>
 
@@ -332,40 +381,6 @@
                 <div class="field-row field-actions">
                   <div class="btn-sm" onclick="App.saveProject()">💾 Lưu</div>
                   <div class="btn-sm btn-secondary" onclick="App.showProjectList()">📂 Tải</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- § Chuyển Cảnh -->
-            <div class="settings-section" id="transition-section">
-              <div class="section-header">
-                <svg class="section-icon" viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>
-                <span class="section-title">Chuyển Cảnh</span>
-                <span class="toggle-label-sm">Ngẫu nhiên</span>
-                <label class="toggle-switch toggle-xs">
-                  <input type="checkbox" id="transition-random" checked onchange="App.toggleTransitionRandom()">
-                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                </label>
-              </div>
-              <div class="section-body">
-                <div id="transition-selector" class="hidden">
-                  <label class="field-label" style="margin-bottom:4px">Chọn chuyển cảnh</label>
-                  <div class="fx-grid">
-                    <div class="fx-btn active" data-transition="fade_black"     onclick="App.selectTransition(this)"><span class="fx-icon">⬛</span><span>Fade Đen</span></div>
-                    <div class="fx-btn"         data-transition="fade_white"     onclick="App.selectTransition(this)"><span class="fx-icon">⬜</span><span>Fade Trắng</span></div>
-                    <div class="fx-btn"         data-transition="cross_dissolve" onclick="App.selectTransition(this)"><span class="fx-icon">🔀</span><span>Dissolve</span></div>
-                    <div class="fx-btn"         data-transition="slide_left"     onclick="App.selectTransition(this)"><span class="fx-icon">◀️</span><span>Slide ←</span></div>
-                    <div class="fx-btn"         data-transition="slide_right"    onclick="App.selectTransition(this)"><span class="fx-icon">▶️</span><span>Slide →</span></div>
-                    <div class="fx-btn"         data-transition="zoom_transition" onclick="App.selectTransition(this)"><span class="fx-icon">🔭</span><span>Zoom</span></div>
-                  </div>
-                </div>
-                <div class="field-row">
-                  <label class="field-label">Thời lượng chuyển cảnh</label>
-                  <select class="field-select" id="transition-duration">
-                    <option value="0.3">0.3 giây</option>
-                    <option value="0.5" selected>0.5 giây</option>
-                    <option value="1.0">1.0 giây</option>
-                  </select>
                 </div>
               </div>
             </div>
