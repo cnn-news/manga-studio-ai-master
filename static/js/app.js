@@ -622,6 +622,13 @@ function onComplete(result) {
     document.title = 'Manga Studio AI ✓';
     setTimeout(() => { document.title = 'Manga Studio AI'; }, 8000);
     _setRenderBtnState('idle');
+    // Clear SRT path — backend deletes auto-generated SRTs after render.
+    // Also reset to auto mode so the user is not left with 'srt' source + empty path.
+    const _srtInp = $('srt-path');
+    if (_srtInp) _srtInp.value = '';
+    if (typeof App !== 'undefined' && App.toggleSubtitleSource) {
+        App.toggleSubtitleSource('auto');
+    }
     // Hide stat cards
     const strip = document.querySelector('.main-top-strip');
     if (strip) strip.classList.add('hidden-cards');
@@ -870,6 +877,11 @@ const App = {
 
     // Render lifecycle
     async startRender() {
+        // Prevent double-clicks
+        const renderBtn = $('btn-render');
+        if (renderBtn?.classList.contains('disabled')) return;
+        _setRenderBtnState('rendering');
+
         // Scroll mode overrides Ken Burns effects
         const scrollMode    = $('scroll-mode')?.checked ?? false;
         // Effect mode
@@ -887,13 +899,16 @@ const App = {
 
         // Segment cards are the source of truth for image/audio
         this._syncSegmentsFromDOM();
+        this._syncSeg0ToMainInputs();
         if (this._segments.length === 0) {
             toast('Vui lòng nhấn "+ Thêm video" để thêm ít nhất 1 video trước khi render.', 'warning');
+            _setRenderBtnState('idle');
             return;
         }
         const seg0 = this._segments[0];
         if (!seg0.image_folder?.trim() || !seg0.audio_file?.trim()) {
             toast('Video 1 cần có đủ Ảnh manga và Audio trước khi render.', 'warning');
+            _setRenderBtnState('idle');
             return;
         }
 
@@ -935,6 +950,7 @@ const App = {
 
         if (!cfg.output_folder) {
             toast('Vui lòng chọn thư mục xuất trước khi render.', 'warning');
+            _setRenderBtnState('idle');
             return;
         }
 
@@ -943,15 +959,20 @@ const App = {
             if (subSource === 'srt') {
                 if (!srtPath) {
                     toast('Vui lòng chọn file SRT trước khi render.', 'warning');
+                    _setRenderBtnState('idle');
                     return;
                 }
                 cfg.subtitle_srt_path = srtPath;
             } else {
-                // source = 'auto': generate SRT from audio source (folder or single file)
+                // Auto mode: always generate a fresh SRT.
+                // Never reuse a cached path — the backend deletes auto-generated SRTs
+                // after each render, so any retained path would point to a deleted file
+                // and FFmpeg would silently skip the subtitle burn.
+                toast('Đang tạo phụ đề tự động từ audio…', 'info');
+                srtPath = await this._generateSRTForRender(cfg.output_folder, 'auto');
                 if (!srtPath) {
-                    toast('Đang tạo phụ đề tự động từ audio…', 'info');
-                    srtPath = await this._generateSRTForRender(cfg.output_folder, 'auto');
-                    if (!srtPath) return; // error already toasted
+                    _setRenderBtnState('idle');
+                    return;
                 }
                 cfg.subtitle_srt_path = srtPath;
             }
@@ -965,8 +986,6 @@ const App = {
 
             if (!d.job_id) throw new Error(d.error || 'Không nhận được job_id');
             _jobId = d.job_id;
-
-            _setRenderBtnState('rendering');
 
             // Reset UI
             const fill = $('progress-fill');
@@ -987,6 +1006,7 @@ const App = {
             addLog('Render khởi động — job: ' + _jobId, 'info');
         } catch (e) {
             toast('Không thể bắt đầu render: ' + e.message, 'error');
+            _setRenderBtnState('idle');
         }
     },
 
@@ -1795,18 +1815,34 @@ const App = {
         this._previewRaf = requestAnimationFrame(frame);
     },
 
-    // ── Build subtitle API payload based on current audio mode ──
+    // ── Build subtitle API payload — prefers segment card data over hidden inputs ──
     _buildSubtitlePayload(outputFolder, language) {
         const payload = { output_folder: outputFolder, language };
-        if (_isFileMode()) {
+
+        // Segment cards are the source of truth; hidden inputs are legacy fallback
+        const allAudioFiles = (this._segments || [])
+            .map(s => s.audio_file?.trim())
+            .filter(f => !!f);
+
+        if (allAudioFiles.length > 1) {
+            // Multi-video: send ordered list so SRT timestamps span all parts
+            payload.audio_files = allAudioFiles;
+        } else if (allAudioFiles.length === 1) {
+            payload.single_audio_file = allAudioFiles[0];
+        } else if (_isFileMode()) {
+            // Fallback: legacy hidden input (single-file mode)
             payload.single_audio_file = $('audio-file')?.value?.trim() || '';
         } else {
+            // Fallback: legacy hidden input (folder mode)
             payload.audio_folder = $('audio-folder')?.value?.trim() || '';
         }
         return payload;
     },
 
     _hasAudioSource() {
+        // Check segment cards first
+        if ((this._segments || []).some(s => s.audio_file?.trim())) return true;
+        // Fallback to legacy hidden inputs
         return _isFileMode()
             ? !!($('audio-file')?.value?.trim())
             : !!($('audio-folder')?.value?.trim());
@@ -1827,6 +1863,11 @@ const App = {
             if (d.error) {
                 toast((d.error || '') + (d.detail ? ' — ' + d.detail : ''), 'error');
                 if (status) status.textContent = '❌ Thất bại';
+                return null;
+            }
+            if (!d.entry_count || d.entry_count === 0) {
+                toast('Whisper không nhận dạng được giọng nói trong file audio — thử lại hoặc chọn file SRT thủ công.', 'warning');
+                if (status) status.textContent = '⚠️ Không nhận diện được giọng nói';
                 return null;
             }
             const inp = $('srt-path'); if (inp) inp.value = d.srt_path || '';
@@ -1870,6 +1911,9 @@ const App = {
             if (d.error) {
                 toast((d.error || '') + (d.detail ? ' — ' + d.detail : ''), 'error');
                 if (status) status.textContent = '❌ Thất bại';
+            } else if (!d.entry_count || d.entry_count === 0) {
+                if (status) status.textContent = '⚠️ 0 phụ đề — không nhận diện được giọng nói';
+                toast('Whisper không nhận diện được giọng nói. Hãy thử file audio khác hoặc chọn ngôn ngữ cụ thể.', 'warning');
             } else {
                 const inp = $('srt-path'); if (inp) inp.value = d.srt_path || '';
                 if (status) status.textContent = `✅ ${d.entry_count} phụ đề`;

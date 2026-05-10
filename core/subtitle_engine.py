@@ -106,8 +106,18 @@ def _color_transparent() -> str:
 
 
 def _escape_filter_path(path: str) -> str:
+    """Return an FFmpeg filter-safe path for the `filename='...'` option.
+
+    On Windows the drive-letter colon must be escaped as \\: even inside
+    single-quoted strings when using explicit option syntax (filename='...').
+    Forward slashes are used throughout for cross-platform compatibility.
+
+    Tested working form: ass=filename='C\\:/path/with spaces/file.ass'
+    """
     p = os.path.abspath(path).replace("\\", "/")
-    if len(p) > 1 and p[1] == ":":
+    # Escape the Windows drive-letter colon so FFmpeg doesn't treat it as an
+    # option separator inside the filter string (e.g. C:/ → C\:/)
+    if len(p) >= 2 and p[1] == ":":
         p = p[0] + "\\:" + p[2:]
     return p
 
@@ -331,16 +341,21 @@ class SubtitleEngine:
         output_video: str,
         preset: str = "youtube_classic",
         custom: dict = None,
+        ass_output_path: str = None,
     ) -> list:
         """Return FFmpeg command that burns styled+animated subtitles.
 
-        Generates an ASS file next to the SRT, then uses the `ass` filter
-        so that karaoke \\kf and fade \\fad tags render correctly.
+        Generates an ASS file (at ass_output_path if given, otherwise next to
+        the SRT), then uses the `ass` filter so that karaoke \\kf and fade
+        \\fad tags render correctly.
         """
-        ass_path = os.path.splitext(srt_path)[0] + f"_{preset}.ass"
+        if ass_output_path is None:
+            ass_output_path = os.path.splitext(srt_path)[0] + f"_{preset}.ass"
         try:
-            self.generate_ass(srt_path, preset, ass_path)
-            vf = f"ass='{_escape_filter_path(ass_path)}'"
+            self.generate_ass(srt_path, preset, ass_output_path)
+            # Use explicit filename= option; on Windows the drive colon must be
+            # escaped as \: inside single-quoted filter values.
+            vf = f"ass=filename='{_escape_filter_path(ass_output_path)}'"
         except Exception:
             # Fallback: static subtitles filter
             vf = self.build_subtitle_filter(srt_path, preset, custom)
@@ -408,7 +423,7 @@ class SubtitleEngine:
             + style_extra
         )
         escaped_path = _escape_filter_path(srt_path)
-        return f"subtitles='{escaped_path}':force_style='{force_style}'"
+        return f"subtitles=filename='{escaped_path}':force_style='{force_style}'"
 
     # ── misc utilities ────────────────────────────────────────────────────
 

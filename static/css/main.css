@@ -1899,6 +1899,7 @@ img, video, canvas, iframe { max-width: 100%; }
 /* Panel title bar */
 .s-panel-hdr {
   padding: 7px 10px;
+  min-height: 44px;
   font-size: .72rem;
   font-weight: 700;
   color: var(--accent-light);
@@ -1917,9 +1918,9 @@ img, video, canvas, iframe { max-width: 100%; }
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
+  min-height: 44px;
   flex-shrink: 0;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
 }
 .btn-add-full {
   flex: 1;
@@ -1938,6 +1939,7 @@ img, video, canvas, iframe { max-width: 100%; }
 
 /* Keep settings-col style for sections inside panels */
 .s-panel-body .settings-section { border-right: none; }
+#section-subtitle, #section-advanced { border-bottom: none; }
 
 /* section-header with inline toggle */
 .section-header .toggle-label-sm {

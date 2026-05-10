@@ -112,10 +112,6 @@
 
         <!-- ░░ Panel 2: Hiệu ứng ░░ -->
         <div class="s-panel" id="panel-effects">
-          <div class="s-panel-hdr">
-            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;flex-shrink:0"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-            Hiệu ứng
-          </div>
           <div class="s-panel-body">
 
             <!-- Hidden inputs — backward compat, synced from segment cards -->
@@ -258,7 +254,7 @@
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
                 </label>
               </div>
-              <div class="section-body" id="subtitle-panel" style="display:none">
+              <div class="section-body" id="subtitle-panel">
 
                 <!-- Nguồn phụ đề -->
                 <div class="field-row">
@@ -333,10 +329,6 @@
 
         <!-- ░░ Panel 3: Cài đặt ░░ -->
         <div class="s-panel" id="panel-config">
-          <div class="s-panel-hdr">
-            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:currentColor;flex-shrink:0"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
-            Cài đặt
-          </div>
           <div class="s-panel-body">
 
             <!-- § Dự Án -->
@@ -374,7 +366,9 @@
                   </select>
                 </div>
                 <div class="field-row">
-                  <label class="field-label">Chất lượng</label>
+                  <label class="field-label">Chất lượng
+                    <span class="info-icon" data-tooltip="Tốc độ mã hóa của FFmpeg. 'Nhanh' render nhanh hơn nhưng file lớn hơn; 'Cao' render lâu hơn nhưng nén tốt hơn với cùng chất lượng hình ảnh.">i</span>
+                  </label>
                   <select class="field-select" id="quality">
                     <option value="fast">Nhanh (ultrafast)</option>
                     <option value="balanced" selected>Cân bằng (medium)</option>
@@ -406,11 +400,15 @@
                   </label>
                 </div>
                 <div class="field-row">
-                  <label class="field-label">Fade in audio <span class="field-value" id="audio-fade-in-val">0.5s</span></label>
+                  <label class="field-label">Fade in audio <span class="field-value" id="audio-fade-in-val">0.5s</span>
+                    <span class="info-icon" data-tooltip="Âm thanh tăng dần từ im lặng lên đủ âm lượng trong khoảng thời gian này ở đầu mỗi đoạn audio — tránh tiếng bật đột ngột.">i</span>
+                  </label>
                   <input type="range" class="field-range" id="audio-fade-in" min="0" max="3" step="0.5" value="0.5" oninput="document.getElementById('audio-fade-in-val').textContent=this.value+'s'">
                 </div>
                 <div class="field-row">
-                  <label class="field-label">Fade out audio <span class="field-value" id="audio-fade-out-val">1.0s</span></label>
+                  <label class="field-label">Fade out audio <span class="field-value" id="audio-fade-out-val">1.0s</span>
+                    <span class="info-icon" data-tooltip="Âm thanh giảm dần về im lặng trong khoảng thời gian này ở cuối mỗi đoạn audio — tránh tiếng cắt đột ngột khi hết bài.">i</span>
+                  </label>
                   <input type="range" class="field-range" id="audio-fade-out" min="0" max="3" step="0.5" value="1.0" oninput="document.getElementById('audio-fade-out-val').textContent=this.value+'s'">
                 </div>
                 <div class="field-row">

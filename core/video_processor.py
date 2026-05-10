@@ -3,6 +3,7 @@ import psutil
 import random
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -1155,17 +1156,81 @@ class VideoProcessor:
         if not self.config.subtitle_srt_path or self.config.subtitle_preset == "none":
             return {"ok": True, "path": input_path, "skipped": True}
 
-        self._log(f"Burning subtitles (preset={self.config.subtitle_preset})…")
-        cmd = self.subtitle_engine.burn_subtitles_command(
-            input_path,
-            self.config.subtitle_srt_path,
-            output_path,
-            preset=self.config.subtitle_preset,
-        )
-        result = self._run_ffmpeg(cmd, timeout=1800)
+        srt = self.config.subtitle_srt_path
+        if not os.path.isfile(srt):
+            err = f"SRT file not found: {srt}"
+            self._log(err, "error")
+            return {"ok": False, "path": "", "error": err}
+
+        preset = self.config.subtitle_preset
+        self._log(f"Burning subtitles (preset={preset})…")
+
+        # Use the system temp directory for both ASS and a SRT copy.
+        # This guarantees a path without spaces on most Windows systems —
+        # the output_folder path often contains "My Projects" or similar
+        # directory names with spaces that break the FFmpeg `ass` / `subtitles`
+        # filter path parser on Windows.
+        uid       = uuid.uuid4().hex[:8]
+        sys_tmp   = tempfile.gettempdir()
+        safe_ass  = os.path.join(sys_tmp, f"manga_sub_{uid}_{preset}.ass")
+        safe_srt  = os.path.join(sys_tmp, f"manga_srt_{uid}.srt")
+
+        # Copy SRT to a guaranteed-safe path for the fallback subtitles filter.
+        try:
+            shutil.copy2(srt, safe_srt)
+        except Exception as exc:
+            self._log(f"Could not copy SRT to temp: {exc}", "warning")
+            safe_srt = srt  # fall back to original path
+
+        result: dict = {"ok": False, "error": "not started"}
+        try:
+            # Primary: ASS filter (supports karaoke/fade animations)
+            cmd = self.subtitle_engine.burn_subtitles_command(
+                input_path,
+                safe_srt,
+                output_path,
+                preset=preset,
+                ass_output_path=safe_ass,
+            )
+            result = self._run_ffmpeg(cmd, timeout=1800)
+
+            # Fallback: plain subtitles filter (simpler, same libass dependency)
+            if not result["ok"]:
+                self._log(
+                    f"ASS filter failed ({result['error'][:120]}); "
+                    "retrying with subtitles filter…",
+                    "warning",
+                )
+                fallback_vf = self.subtitle_engine.build_subtitle_filter(safe_srt, preset)
+                if fallback_vf:
+                    fallback_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", input_path,
+                        "-vf", fallback_vf,
+                        "-c:v", DEFAULT_VIDEO_CODEC, "-preset", "fast", "-crf", "18",
+                        "-pix_fmt", "yuv420p",
+                        "-c:a", "copy",
+                        "-movflags", "+faststart",
+                        output_path,
+                    ]
+                    result = self._run_ffmpeg(fallback_cmd, timeout=1800)
+        finally:
+            for f in (safe_ass, safe_srt if safe_srt != srt else None):
+                if f and os.path.isfile(f):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
         result["path"] = output_path if result["ok"] else ""
         if not result["ok"]:
-            self._log(f"Subtitle burn failed: {result['error']}", "error")
+            self._log(
+                "Subtitle burn failed — video rendered WITHOUT subtitles.\n"
+                "If this keeps happening, verify FFmpeg was compiled with libass "
+                f"(run: ffmpeg -filters | findstr ass).\n"
+                f"FFmpeg error: {result['error'][-600:]}",
+                "error",
+            )
         return result
 
     # ── Phase 3c: intro / outro ───────────────────────────────────────────
@@ -1387,10 +1452,20 @@ class VideoProcessor:
         current = output_file
 
         if self.config.subtitle_srt_path and self.config.subtitle_preset != "none":
+            self.progress.current_phase    = "finalizing"
+            self.progress.overall_progress = 0.98
+            self._notify_progress()
+            self._log("Đốt phụ đề vào video ghép…")
             sub_path = os.path.join(self.temp_dir, "subtitled.mp4")
-            sub = self.apply_subtitles(current, sub_path)
-            if sub["ok"] and not sub.get("skipped"):
+            sub_res = self.apply_subtitles(current, sub_path)
+            if sub_res["ok"] and not sub_res.get("skipped"):
                 current = sub_path
+                self._log("Phụ đề đã được đốt thành công.")
+            elif sub_res.get("skipped"):
+                pass  # subtitle_preset = "none" handled upstream
+            else:
+                err_detail = sub_res.get("error", "unknown")[:200]
+                self._log(f"PHỤĐỀ THẤT BẠI — video không có phụ đề: {err_detail}", "error")
 
         if self.config.intro_path or self.config.outro_path:
             io_path = os.path.join(self.temp_dir, "with_io.mp4")
@@ -1399,7 +1474,16 @@ class VideoProcessor:
                 current = io_path
 
         if current != output_file:
-            shutil.move(current, output_file)
+            try:
+                # os.replace is atomic on same drive and overwrites existing dst on Windows
+                os.replace(current, output_file)
+            except OSError:
+                # Cross-drive or other error: fall back to copy + delete
+                shutil.copy2(current, output_file)
+                try:
+                    os.remove(current)
+                except Exception:
+                    pass
 
         file_size_mb = round(os.path.getsize(output_file) / (1024 * 1024), 2)
         duration     = _probe_duration(output_file)
@@ -1558,19 +1642,27 @@ class VideoProcessor:
         }
 
     def _cleanup_subtitle_files(self) -> None:
-        """Delete the .srt and derived .ass file after a successful render."""
+        """Delete auto-generated SRT after a successful render.
+
+        The ASS file is now written to temp_dir (cleaned by cleanup_temp), so
+        only the source SRT needs explicit deletion here — and only when it was
+        auto-generated by Whisper (i.e. it lives inside the output folder).
+        User-selected SRT files stored elsewhere are intentionally left alone.
+        """
         srt = self.config.subtitle_srt_path
         if not srt:
             return
-        preset = self.config.subtitle_preset or "none"
-        ass = os.path.splitext(srt)[0] + f"_{preset}.ass"
-        for path in (srt, ass):
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-                    self._log(f"Deleted subtitle file: {os.path.basename(path)}")
-            except Exception as exc:
-                self._log(f"Could not delete {os.path.basename(path)}: {exc}", "warning")
+
+        # Only delete the SRT when it was auto-generated (lives in output folder)
+        try:
+            out_abs = os.path.abspath(self.config.output_folder)
+            srt_abs = os.path.abspath(srt)
+            if srt_abs.startswith(out_abs + os.sep) or srt_abs.startswith(out_abs + "/"):
+                if os.path.isfile(srt_abs):
+                    os.remove(srt_abs)
+                    self._log(f"Deleted auto-generated SRT: {os.path.basename(srt_abs)}")
+        except Exception as exc:
+            self._log(f"Could not delete SRT {os.path.basename(srt)}: {exc}", "warning")
 
     # ── control ───────────────────────────────────────────────────────────
 

@@ -719,6 +719,7 @@ def subtitle_generate():
         data              = request.json or {}
         audio_folder      = (data.get("audio_folder")      or "").strip()
         single_audio_file = (data.get("single_audio_file") or "").strip()
+        audio_files_list  = data.get("audio_files")   # list of individual file paths (multi-video)
         output_folder     = (data.get("output_folder")     or "").strip()
         language          = data.get("language") or None
         model_size        = data.get("model_size", "base")
@@ -728,7 +729,22 @@ def subtitle_generate():
         os.makedirs(output_folder, exist_ok=True)
 
         # ── Build list of audio file paths depending on mode ──────────────
-        if single_audio_file:
+        if audio_files_list and isinstance(audio_files_list, list):
+            # Multi-video mode: individual audio files provided as an ordered list
+            audio_fpaths = []
+            for fpath in audio_files_list:
+                fpath = str(fpath).strip()
+                if not fpath:
+                    continue
+                if not os.path.isfile(fpath):
+                    return _api_error(f"File audio không tồn tại: {fpath}")
+                ext = os.path.splitext(fpath)[1].lower()
+                if ext not in SUPPORTED_AUDIO_FORMATS:
+                    return _api_error(f"Định dạng không được hỗ trợ: {ext}")
+                audio_fpaths.append(fpath)
+            if not audio_fpaths:
+                return _api_error("Danh sách audio_files rỗng hoặc không hợp lệ")
+        elif single_audio_file:
             # Single-audio-file mode: transcribe one file
             if not os.path.isfile(single_audio_file):
                 return _api_error(f"File audio không tồn tại: {single_audio_file}")
@@ -748,7 +764,7 @@ def subtitle_generate():
             if not audio_fpaths:
                 return _api_error("Không tìm thấy file audio trong thư mục")
         else:
-            return _api_error("audio_folder hoặc single_audio_file là bắt buộc")
+            return _api_error("audio_folder, single_audio_file hoặc audio_files là bắt buộc")
 
         # ── Load / reuse Whisper model ─────────────────────────────────────
         backend, model = _load_whisper_model(model_size)
