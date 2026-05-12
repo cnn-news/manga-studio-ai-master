@@ -890,7 +890,15 @@ const App = {
         // Transition mode (scroll mode ignores transitions)
         const transRandom   = scrollMode ? true : ($('transition-random')?.checked ?? true);
         const activeTrans   = document.querySelector('.fx-btn.active[data-transition]');
-        const transOptions  = ['fade_black','fade_white','cross_dissolve','slide_left','slide_right','zoom_transition'];
+        const transOptions  = [
+            'fade_black','fade_white','cross_dissolve',
+            'slide_left','slide_right','slide_up','slide_down',
+            'cover_left','cover_right','cover_up','cover_down',
+            'reveal_left','reveal_right',
+            'zoom_transition','iris_open','iris_close',
+            'radial_wipe','dissolve','pixelize',
+            'wipe_left','wipe_right','smooth_left','smooth_right',
+        ];
         // Subtitle
         const subEnabled     = $('subtitle-enabled')?.checked ?? false;
         const activeSubStyle = document.querySelector('.sub-style-btn.active');

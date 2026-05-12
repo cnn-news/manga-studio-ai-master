@@ -198,6 +198,14 @@
                       <div class="fx-btn"         data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
                       <div class="fx-btn"         data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
                       <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
+                      <div class="fx-btn"         data-effect="kb_in"          onclick="App.selectEffect(this)"><span class="fx-icon">🔎</span><span>KB Zoom In</span></div>
+                      <div class="fx-btn"         data-effect="kb_out"         onclick="App.selectEffect(this)"><span class="fx-icon">🔭</span><span>KB Zoom Out</span></div>
+                      <div class="fx-btn"         data-effect="pan_left"       onclick="App.selectEffect(this)"><span class="fx-icon">⬅️</span><span>Pan Trái</span></div>
+                      <div class="fx-btn"         data-effect="pan_right"      onclick="App.selectEffect(this)"><span class="fx-icon">➡️</span><span>Pan Phải</span></div>
+                      <div class="fx-btn"         data-effect="pan_up"         onclick="App.selectEffect(this)"><span class="fx-icon">⬆️</span><span>Pan Lên</span></div>
+                      <div class="fx-btn"         data-effect="pan_down"       onclick="App.selectEffect(this)"><span class="fx-icon">⬇️</span><span>Pan Xuống</span></div>
+                      <div class="fx-btn"         data-effect="shake"          onclick="App.selectEffect(this)"><span class="fx-icon">📳</span><span>Camera Shake</span></div>
+                      <div class="fx-btn"         data-effect="wobble"         onclick="App.selectEffect(this)"><span class="fx-icon">〽️</span><span>Wobble</span></div>
                     </div>
                   </div>
                   <div id="effect-speed-row" class="field-row">
@@ -221,12 +229,29 @@
                   <div id="transition-selector" class="hidden">
                     <label class="field-label" style="margin-bottom:4px">Chọn chuyển cảnh</label>
                     <div class="fx-grid">
-                      <div class="fx-btn active" data-transition="fade_black"      onclick="App.selectTransition(this)"><span class="fx-icon">⬛</span><span>Fade Đen</span></div>
-                      <div class="fx-btn"         data-transition="fade_white"      onclick="App.selectTransition(this)"><span class="fx-icon">⬜</span><span>Fade Trắng</span></div>
-                      <div class="fx-btn"         data-transition="cross_dissolve"  onclick="App.selectTransition(this)"><span class="fx-icon">🔀</span><span>Dissolve</span></div>
-                      <div class="fx-btn"         data-transition="slide_left"      onclick="App.selectTransition(this)"><span class="fx-icon">◀️</span><span>Slide ←</span></div>
-                      <div class="fx-btn"         data-transition="slide_right"     onclick="App.selectTransition(this)"><span class="fx-icon">▶️</span><span>Slide →</span></div>
-                      <div class="fx-btn"         data-transition="zoom_transition" onclick="App.selectTransition(this)"><span class="fx-icon">🔭</span><span>Zoom</span></div>
+                      <div class="fx-btn active" data-transition="fade_black"    onclick="App.selectTransition(this)"><span class="fx-icon">⬛</span><span>Fade Đen</span></div>
+                      <div class="fx-btn"         data-transition="fade_white"    onclick="App.selectTransition(this)"><span class="fx-icon">⬜</span><span>Fade Trắng</span></div>
+                      <div class="fx-btn"         data-transition="cross_dissolve" onclick="App.selectTransition(this)"><span class="fx-icon">🔀</span><span>Dissolve</span></div>
+                      <div class="fx-btn"         data-transition="dissolve"       onclick="App.selectTransition(this)"><span class="fx-icon">💧</span><span>Dissolve 2</span></div>
+                      <div class="fx-btn"         data-transition="slide_left"     onclick="App.selectTransition(this)"><span class="fx-icon">◀️</span><span>Slide ←</span></div>
+                      <div class="fx-btn"         data-transition="slide_right"    onclick="App.selectTransition(this)"><span class="fx-icon">▶️</span><span>Slide →</span></div>
+                      <div class="fx-btn"         data-transition="slide_up"       onclick="App.selectTransition(this)"><span class="fx-icon">🔼</span><span>Slide ↑</span></div>
+                      <div class="fx-btn"         data-transition="slide_down"     onclick="App.selectTransition(this)"><span class="fx-icon">🔽</span><span>Slide ↓</span></div>
+                      <div class="fx-btn"         data-transition="cover_left"     onclick="App.selectTransition(this)"><span class="fx-icon">⬅️</span><span>Cover ←</span></div>
+                      <div class="fx-btn"         data-transition="cover_right"    onclick="App.selectTransition(this)"><span class="fx-icon">➡️</span><span>Cover →</span></div>
+                      <div class="fx-btn"         data-transition="cover_up"       onclick="App.selectTransition(this)"><span class="fx-icon">⬆️</span><span>Cover ↑</span></div>
+                      <div class="fx-btn"         data-transition="cover_down"     onclick="App.selectTransition(this)"><span class="fx-icon">⬇️</span><span>Cover ↓</span></div>
+                      <div class="fx-btn"         data-transition="reveal_left"    onclick="App.selectTransition(this)"><span class="fx-icon">👈</span><span>Reveal ←</span></div>
+                      <div class="fx-btn"         data-transition="reveal_right"   onclick="App.selectTransition(this)"><span class="fx-icon">👉</span><span>Reveal →</span></div>
+                      <div class="fx-btn"         data-transition="zoom_transition" onclick="App.selectTransition(this)"><span class="fx-icon">🔎</span><span>Zoom In</span></div>
+                      <div class="fx-btn"         data-transition="iris_open"      onclick="App.selectTransition(this)"><span class="fx-icon">🔵</span><span>Iris Mở</span></div>
+                      <div class="fx-btn"         data-transition="iris_close"     onclick="App.selectTransition(this)"><span class="fx-icon">⚫</span><span>Iris Đóng</span></div>
+                      <div class="fx-btn"         data-transition="radial_wipe"    onclick="App.selectTransition(this)"><span class="fx-icon">🔄</span><span>Radial Wipe</span></div>
+                      <div class="fx-btn"         data-transition="pixelize"       onclick="App.selectTransition(this)"><span class="fx-icon">🟫</span><span>Pixelize</span></div>
+                      <div class="fx-btn"         data-transition="wipe_left"      onclick="App.selectTransition(this)"><span class="fx-icon">🫲</span><span>Wipe ←</span></div>
+                      <div class="fx-btn"         data-transition="wipe_right"     onclick="App.selectTransition(this)"><span class="fx-icon">🫱</span><span>Wipe →</span></div>
+                      <div class="fx-btn"         data-transition="smooth_left"    onclick="App.selectTransition(this)"><span class="fx-icon">🌊</span><span>Smooth ←</span></div>
+                      <div class="fx-btn"         data-transition="smooth_right"   onclick="App.selectTransition(this)"><span class="fx-icon">🌊</span><span>Smooth →</span></div>
                     </div>
                   </div>
                   <div class="field-row">

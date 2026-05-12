@@ -9,12 +9,31 @@ from config import (
 
 # Maps our transition names to FFmpeg xfade transition identifiers
 _XFADE_MAP = {
+    # originals
     "fade_black":     "fadeblack",
     "fade_white":     "fadewhite",
     "cross_dissolve": "fade",
     "slide_left":     "slideleft",
     "slide_right":    "slideright",
     "zoom_transition": "zoomin",
+    # new
+    "slide_up":       "slideup",
+    "slide_down":     "slidedown",
+    "cover_left":     "coverleft",
+    "cover_right":    "coverright",
+    "cover_up":       "coverup",
+    "cover_down":     "coverdown",
+    "reveal_left":    "revealleft",
+    "reveal_right":   "revealright",
+    "iris_open":      "circleopen",
+    "iris_close":     "circleclose",
+    "radial_wipe":    "radial",
+    "pixelize":       "pixelize",
+    "dissolve":       "dissolve",
+    "wipe_left":      "wipeleft",
+    "wipe_right":     "wiperight",
+    "smooth_left":    "smoothleft",
+    "smooth_right":   "smoothright",
 }
 
 _XFADE_THRESHOLD = 20  # segments above this use concat demuxer
@@ -23,12 +42,31 @@ _XFADE_THRESHOLD = 20  # segments above this use concat demuxer
 class TransitionEngine:
 
     TRANSITIONS = {
+        # originals
         "fade_black":     "Fade to Black",
         "fade_white":     "Fade to White",
         "cross_dissolve": "Cross Dissolve",
         "slide_left":     "Slide Left",
         "slide_right":    "Slide Right",
-        "zoom_transition": "Zoom Out/In",
+        "zoom_transition": "Zoom In",
+        # new
+        "slide_up":       "Slide Up",
+        "slide_down":     "Slide Down",
+        "cover_left":     "Cover Left",
+        "cover_right":    "Cover Right",
+        "cover_up":       "Cover Up",
+        "cover_down":     "Cover Down",
+        "reveal_left":    "Reveal Left",
+        "reveal_right":   "Reveal Right",
+        "iris_open":      "Iris Open",
+        "iris_close":     "Iris Close",
+        "radial_wipe":    "Radial Wipe",
+        "pixelize":       "Pixelize",
+        "dissolve":       "Dissolve",
+        "wipe_left":      "Wipe Left",
+        "wipe_right":     "Wipe Right",
+        "smooth_left":    "Smooth Left",
+        "smooth_right":   "Smooth Right",
     }
 
     def get_xfade_filter(
@@ -51,8 +89,13 @@ class TransitionEngine:
         output_path: str,
         transition: str = "fade_black",
         transition_duration: float = 0.5,
+        video_only: bool = False,
     ) -> list:
         """Build an FFmpeg command that joins all segments with xfade transitions.
+
+        video_only=True is used when segments have no audio track (single-audio
+        mode). In that case only the video xfade filter is applied; audio is
+        injected separately by the caller after merging.
 
         For each pair of adjacent segments the offset is calculated as:
             offset_i = sum(D_0..D_i) - (i+1) * transition_duration
@@ -65,19 +108,33 @@ class TransitionEngine:
         for f in segment_files:
             cmd += ["-i", f]
 
-        encode_opts = [
-            "-c:v", DEFAULT_VIDEO_CODEC,
-            "-preset", "fast",
-            "-crf", "18",
-            "-c:a", DEFAULT_AUDIO_CODEC,
-            "-b:a", DEFAULT_AUDIO_BITRATE,
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            output_path,
-        ]
+        if video_only:
+            encode_opts = [
+                "-c:v", DEFAULT_VIDEO_CODEC,
+                "-preset", "fast",
+                "-crf", "18",
+                "-bf", "0",
+                "-an",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path,
+            ]
+        else:
+            encode_opts = [
+                "-c:v", DEFAULT_VIDEO_CODEC,
+                "-preset", "fast",
+                "-crf", "18",
+                "-bf", "0",
+                "-c:a", DEFAULT_AUDIO_CODEC,
+                "-b:a", DEFAULT_AUDIO_BITRATE,
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path,
+            ]
 
         if n == 1:
-            cmd += ["-map", "0:v", "-map", "0:a"] + encode_opts
+            maps = ["-map", "0:v"] + ([] if video_only else ["-map", "0:a"])
+            cmd += maps + encode_opts
             return cmd
 
         xfade_name = _XFADE_MAP.get(transition, "fadeblack")
@@ -91,30 +148,28 @@ class TransitionEngine:
             cumulative += durations[i]
             offset = max(0.0, round(cumulative - (i + 1) * transition_duration, 3))
 
-            # First iteration reads from raw input streams; subsequent ones read
-            # from the previous xfade output label.
-            in_v = f"[xv{i - 1}]" if i > 0 else f"[{i}:v]"
-            in_a = f"[xa{i - 1}]" if i > 0 else f"[{i}:a]"
+            in_v  = f"[xv{i - 1}]" if i > 0 else f"[{i}:v]"
             out_v = "[vout]" if i == n - 2 else f"[xv{i}]"
-            out_a = "[aout]" if i == n - 2 else f"[xa{i}]"
 
             vf.append(
                 f"{in_v}[{i + 1}:v]"
                 f"xfade=transition={xfade_name}:duration={transition_duration}:offset={offset}"
                 f"{out_v}"
             )
-            af.append(
-                f"{in_a}[{i + 1}:a]"
-                f"acrossfade=d={transition_duration}:c1=tri:c2=tri"
-                f"{out_a}"
-            )
+
+            if not video_only:
+                in_a  = f"[xa{i - 1}]" if i > 0 else f"[{i}:a]"
+                out_a = "[aout]" if i == n - 2 else f"[xa{i}]"
+                af.append(
+                    f"{in_a}[{i + 1}:a]"
+                    f"acrossfade=d={transition_duration}:c1=tri:c2=tri"
+                    f"{out_a}"
+                )
 
         filter_complex = ";".join(vf + af)
-        cmd += [
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
-        ]
+        cmd += ["-filter_complex", filter_complex, "-map", "[vout]"]
+        if not video_only:
+            cmd += ["-map", "[aout]"]
         cmd += encode_opts
         return cmd
 

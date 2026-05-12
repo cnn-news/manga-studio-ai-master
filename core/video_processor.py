@@ -148,6 +148,12 @@ def _free_mb(path: str) -> float:
         return float("inf")
 
 
+def _sanitize_filename(name: str) -> str:
+    """Strip characters that are invalid in Windows filenames: \\ / : * ? \" < > |"""
+    import re
+    return re.sub(r'[\\/:*?"<>|]', "", name).strip()
+
+
 # ── main class ────────────────────────────────────────────────────────────────
 
 class VideoProcessor:
@@ -479,6 +485,7 @@ class VideoProcessor:
             "-c:v", self.config.video_codec,
             "-preset", preset,
             "-crf", str(crf),
+            "-bf", "0",          # disable B-frames → monotonic PTS → smooth xfade
             "-pix_fmt", "yuv420p",
             "-t", f"{duration:.6f}",
             "-an",
@@ -556,6 +563,7 @@ class VideoProcessor:
             "-c:v", self.config.video_codec,
             "-preset", preset,
             "-crf", str(crf),
+            "-bf", "0",               # disable B-frames → monotonic PTS → smooth xfade
             "-c:a", self.config.audio_codec,
             "-b:a", self.config.audio_bitrate,
             "-pix_fmt", "yuv420p",
@@ -965,7 +973,13 @@ class VideoProcessor:
 
     # ── Phase 2: merge ────────────────────────────────────────────────────
 
-    def merge_segments(self, segment_files: list, output_path: str, force_concat: bool = False) -> dict:
+    def merge_segments(
+        self,
+        segment_files: list,
+        output_path: str,
+        force_concat: bool = False,
+        video_only: bool = False,
+    ) -> dict:
         n = len(segment_files)
         self._log(f"Merging {n} segment(s) → {os.path.basename(output_path)}")
 
@@ -973,13 +987,13 @@ class VideoProcessor:
             shutil.copy2(segment_files[0], output_path)
             return {"ok": True, "path": output_path}
 
-        # force_concat=True is used by single-audio mode (no transitions, exact timing)
         method = "concat_file" if force_concat else self.transition_engine.choose_method(n)
         if method == "xfade":
             cmd = self.transition_engine.build_concat_command(
                 segment_files, output_path,
                 transition=self.config.transition,
                 transition_duration=self.config.transition_duration,
+                video_only=video_only,
             )
         else:
             concat_file = os.path.join(self.temp_dir, "concat_list.txt")
@@ -1421,7 +1435,8 @@ class VideoProcessor:
         self._notify_progress()
 
         output_file = os.path.join(
-            self.config.output_folder, f"{self.config.project_name}.mp4"
+            self.config.output_folder,
+            f"{_sanitize_filename(self.config.project_name)}.mp4",
         )
 
         if n == 1:
@@ -1567,9 +1582,12 @@ class VideoProcessor:
 
             single_audio = bool(self.config.single_audio_file)
             merged_path  = os.path.join(self.temp_dir, "merged.mp4")
-            # Single-audio segments are video-only; force concat (no transitions)
-            # so total duration equals exactly the audio duration.
-            merge_result = self.merge_segments(ok_segments, merged_path, force_concat=single_audio)
+            # In single-audio mode segments are video-only (no audio track).
+            # Pass video_only=True so xfade is applied without acrossfade;
+            # audio is injected separately in Phase 2b.
+            merge_result = self.merge_segments(
+                ok_segments, merged_path, video_only=single_audio
+            )
             if not merge_result["ok"]:
                 return self._fail(f"Merge failed: {merge_result.get('error')}")
 
@@ -1619,7 +1637,8 @@ class VideoProcessor:
         self._notify_progress()
 
         output_file = os.path.join(
-            self.config.output_folder, f"{self.config.project_name}.mp4"
+            self.config.output_folder,
+            f"{_sanitize_filename(self.config.project_name)}.mp4",
         )
         final = self.finalize(current, output_file)
         if not final["ok"]:

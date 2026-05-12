@@ -4,7 +4,7 @@ core/effect_engine.py — Fast animated Ken Burns effects for still images.
 Design (performance-first):
   • Background: cover-scale + gblur on 1-fps input stream (cost = 1 op/sec).
   • Foreground: contain-scale overlaid centred on blurred background.
-  • zoompan animates the composite at target fps.
+  • zoompan animates the foreground at target fps.
   • zoompan's z/x/y expressions use the built-in frame counter `on`.
 
 Output: 1920×1080, yuv420p, map label [out].
@@ -30,7 +30,12 @@ _PI  = math.pi
 
 class EffectEngine:
 
-    EFFECTS = ["zoom_pulse", "pan_horizontal", "pan_vertical", "pan_diagonal", "tilt_wave"]
+    EFFECTS = [
+        "zoom_pulse", "pan_horizontal", "pan_vertical", "pan_diagonal", "tilt_wave",
+        "kb_in", "kb_out",
+        "pan_left", "pan_right", "pan_up", "pan_down",
+        "shake", "wobble",
+    ]
 
     # ── internal helpers ──────────────────────────────────────────────────────
 
@@ -52,11 +57,10 @@ class EffectEngine:
     ) -> str:
         """Blur-fill letterbox + Ken Burns animation.
 
-        ① Split 1-fps input → bg copy + fg copy
-        ② bg:  cover-scale → center-crop → strong blur  (fills the frame)
-        ③ fg:  contain-scale at (scale × output size); scale<1.0 exposes the blur border
-        ④ Overlay fg centred on blurred bg
-        ⑤ zoompan animates the composite
+        scale=1.0  → image fills the full 1920×1080 frame.
+        scale<1.0  → image occupies (scale × frame) and is centred on a
+                     blurred background.  The Ken Burns effect is applied only
+                     to the image, not to the blur layer.
         """
         scale  = max(0.1, min(1.0, scale))
         z_sub  = f"({z_expr})"
@@ -64,7 +68,7 @@ class EffectEngine:
         safe_y = y_expr.replace("/z", f"/{z_sub}")
 
         if scale >= 0.999:
-            # ── scale = 100 %: original 2-split pipeline ──────────────────────
+            # ── scale = 100 %: image fills the whole frame ────────────────────
             return (
                 f"[0:v]split=2[_bg][_fg];"
                 f"[_bg]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -75,53 +79,42 @@ class EffectEngine:
                 f"d={total_frames}:s={_W}x{_H}:fps={fps},format=yuv420p[out]"
             )
 
-        # ── scale < 100 %: Ken Burns on full image → scale down → outer blur ──
-        # This guarantees the blur border is always visible regardless of zoom level.
+        # ── scale < 100 %: Ken Burns on the IMAGE only, blur fills the border ─
+        # The image is cover-scaled to fg_w × fg_h and animated there.
+        # The blur background stays static at full 1920×1080.
         fg_w = int(_W * scale)
         fg_h = int(_H * scale)
         if fg_w % 2 != 0: fg_w -= 1
         if fg_h % 2 != 0: fg_h -= 1
         return (
-            # three copies: outer blur bg, inner blur bg, foreground
-            f"[0:v]split=3[_bg1][_bg2][_fg];"
-            # outer blur: always-visible background layer
-            f"[_bg1]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"[0:v]split=2[_bg][_fg];"
+            # static blurred background at full frame
+            f"[_bg]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={_W}:{_H},gblur=sigma=30[_outblur];"
-            # inner: blur + contain-scaled fg → composite for Ken Burns
-            f"[_bg2]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={_W}:{_H},gblur=sigma=30[_blurbg];"
-            f"[_fg]scale={_W}:{_H}:force_original_aspect_ratio=decrease:flags=lanczos[_fgfit];"
-            f"[_blurbg][_fgfit]overlay=(W-w)/2:(H-h)/2[_composite];"
-            # Ken Burns on the composite
-            f"[_composite]zoompan=z='{z_expr}':x='{safe_x}':y='{safe_y}':"
-            f"d={total_frames}:s={_W}x{_H}:fps={fps}[_kbout];"
-            # shrink the KB result to scale × frame size
-            f"[_kbout]scale={fg_w}:{fg_h}:flags=lanczos[_kbscaled];"
-            # centre the scaled KB result on the outer blur
-            f"[_outblur][_kbscaled]overlay=(W-w)/2:(H-h)/2,format=yuv420p[out]"
+            # image cover-scaled & cropped to the allocated fg area
+            f"[_fg]scale={fg_w}:{fg_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={fg_w}:{fg_h}[_fgfit];"
+            # Ken Burns animation on the image only, within fg_w × fg_h
+            f"[_fgfit]zoompan=z='{z_expr}':x='{safe_x}':y='{safe_y}':"
+            f"d={total_frames}:s={fg_w}x{fg_h}:fps={fps}[_kbout];"
+            # upsample static blur so overlay is driven by the animated layer
+            f"[_outblur]fps={fps}[_ob{fps}];"
+            f"[_ob{fps}][_kbout]overlay=(W-w)/2:(H-h)/2,format=yuv420p[out]"
         )
 
     # ── effects ───────────────────────────────────────────────────────────────
 
     def zoom_pulse(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
-        """
-        Breathe effect: image content zooms in (60 % of pixels visible) then
-        out (100 % visible) repeatedly.
-
-        In zoompan coordinates:
-          z=1.0  → full image visible (100 %)
-          z=1.667 → only 60 % of pixels visible (magnified / zoomed in)
-        """
+        """Breathe: image zooms in then out repeatedly."""
         cf = self._cycle_frames(speed)
         tf = self._total_frames(duration)
-        # FFmpeg 8.x: use 'on' (output frame number) — 'n' was removed from x/y context
         z  = f"1+0.667*abs(sin(PI*on/{cf}))"
         x  = "(iw-iw/z)/2"
         y  = "(ih-ih/z)/2"
         return self._zoompan(z, x, y, tf, scale=scale)
 
     def pan_horizontal(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
-        """Pan left ↔ right at 1.4× zoom (30 % crop = room to move)."""
+        """Oscillate left ↔ right at 1.4× zoom."""
         cf = self._cycle_frames(speed)
         tf = self._total_frames(duration)
         z  = "1.4"
@@ -130,7 +123,7 @@ class EffectEngine:
         return self._zoompan(z, x, y, tf, scale=scale)
 
     def pan_vertical(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
-        """Pan top ↔ bottom at 1.4× zoom."""
+        """Oscillate top ↔ bottom at 1.4× zoom."""
         cf = self._cycle_frames(speed)
         tf = self._total_frames(duration)
         z  = "1.4"
@@ -139,7 +132,7 @@ class EffectEngine:
         return self._zoompan(z, x, y, tf, scale=scale)
 
     def pan_diagonal(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
-        """Pan top-left ↔ bottom-right diagonally at 1.4× zoom."""
+        """Diagonal oscillation at 1.4× zoom."""
         cf = self._cycle_frames(speed)
         tf = self._total_frames(duration)
         z  = "1.4"
@@ -149,12 +142,87 @@ class EffectEngine:
         return self._zoompan(z, x, y, tf, scale=scale)
 
     def tilt_wave(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
-        """Gentle diagonal sway that mimics a camera tilt / handheld feel."""
+        """Gentle diagonal sway mimicking a camera tilt."""
         cf = self._cycle_frames(speed)
         tf = self._total_frames(duration)
         z  = "1.3"
         x  = f"(iw-iw/z)/2 + (iw-iw/z)/3*sin(2*PI*on/{cf})"
         y  = f"(ih-ih/z)/2 - (ih-ih/z)/3*sin(2*PI*on/{cf})"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    # ── new effects ───────────────────────────────────────────────────────────
+
+    def kb_in(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Ken Burns In: smooth zoom-in/out cycle, starts wide then zooms in."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = f"1.25-0.25*cos(2*PI*on/{cf})"   # 1.0 → 1.5 → 1.0 smoothly
+        x  = "(iw-iw/z)/2"
+        y  = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_out(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Ken Burns Out: smooth zoom-out/in cycle, starts zoomed in then pulls back."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = f"1.25+0.25*cos(2*PI*on/{cf})"   # 1.5 → 1.0 → 1.5 smoothly
+        x  = "(iw-iw/z)/2"
+        y  = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def pan_left(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Continuous horizontal oscillation, starts at right then sweeps left."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = "1.4"
+        x  = f"(iw-iw/z)/2*(1+cos(2*PI*on/{cf}))"   # on=0: right, on=cf/2: left
+        y  = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def pan_right(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Continuous horizontal oscillation, starts at left then sweeps right."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = "1.4"
+        x  = f"(iw-iw/z)/2*(1-cos(2*PI*on/{cf}))"   # on=0: left, on=cf/2: right
+        y  = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def pan_up(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Continuous vertical oscillation, starts at bottom then sweeps up."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = "1.4"
+        x  = "(iw-iw/z)/2"
+        y  = f"(ih-ih/z)/2*(1+cos(2*PI*on/{cf}))"   # on=0: bottom, on=cf/2: top
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def pan_down(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Continuous vertical oscillation, starts at top then sweeps down."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = "1.4"
+        x  = "(iw-iw/z)/2"
+        y  = f"(ih-ih/z)/2*(1-cos(2*PI*on/{cf}))"   # on=0: top, on=cf/2: bottom
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def shake(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Camera shake: handheld jitter at ~2 Hz, continuous and irregular."""
+        cf = self._cycle_frames(speed)
+        tf = self._total_frames(duration)
+        z  = "1.15"
+        # Primary oscillation at cf period; secondary at 0.77× for irregular feel.
+        x  = f"(iw-iw/z)/2 + (iw-iw/z)*0.55*sin(2*PI*on/{cf})"
+        y  = f"(ih-ih/z)/2 + (ih-ih/z)*0.55*cos(2*PI*on/({cf}*0.77))"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def wobble(self, duration: float, speed: str = "normal", scale: float = 1.0) -> str:
+        """Gentle wobble: slow rhythmic sway with mild zoom pulse."""
+        cf = self._cycle_frames(speed) * 2   # half the speed of normal oscillation
+        tf = self._total_frames(duration)
+        z  = f"1.08+0.07*sin(2*PI*on/{cf})"
+        x  = f"(iw-iw/z)/2 + (iw-iw/z)*0.35*sin(2*PI*on/{cf})"
+        y  = "(ih-ih/z)/2"
         return self._zoompan(z, x, y, tf, scale=scale)
 
     # ── public API ────────────────────────────────────────────────────────────
@@ -167,6 +235,14 @@ class EffectEngine:
             "pan_vertical":   self.pan_vertical,
             "pan_diagonal":   self.pan_diagonal,
             "tilt_wave":      self.tilt_wave,
+            "kb_in":          self.kb_in,
+            "kb_out":         self.kb_out,
+            "pan_left":       self.pan_left,
+            "pan_right":      self.pan_right,
+            "pan_up":         self.pan_up,
+            "pan_down":       self.pan_down,
+            "shake":          self.shake,
+            "wobble":         self.wobble,
         }
         fn = dispatch.get(name)
         if fn is None:
