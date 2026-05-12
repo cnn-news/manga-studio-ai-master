@@ -742,9 +742,10 @@ class VideoProcessor:
                 h = heights[i]
                 panel_parts.append(
                     f"[{i}:v]split=2[_pb{i}][_pf{i}];"
-                    # blur bg: cover-scale the image to fill w_out × h, then blur
-                    f"[_pb{i}]scale={w_out}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={w_out}:{h},gblur=sigma=30[_pbg{i}];"
+                    # blur bg: scale 2× before blur then back down — eliminates gblur square artifacts
+                    f"[_pb{i}]scale={w_out*2}:{h*2}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={w_out*2}:{h*2},gblur=sigma=60:steps=6,"
+                    f"scale={w_out}:{h}:flags=lanczos[_pbg{i}];"
                     # fg: scale to exactly fg_w × h (heights[i] was computed at fg_w)
                     f"[_pf{i}]scale={fg_w}:{h}:flags=lanczos[_pfg{i}];"
                     # overlay centred
@@ -1040,30 +1041,53 @@ class VideoProcessor:
     # ── Phase 3a: watermark ───────────────────────────────────────────────
 
     @staticmethod
-    def _find_system_font() -> str:
-        """Return the path to any available TTF/OTF font file on this system."""
+    def _text_has_cjk(text: str) -> bool:
+        """Return True if text contains any CJK / Japanese characters."""
+        for ch in text:
+            cp = ord(ch)
+            if (
+                0x3040 <= cp <= 0x309F
+                or 0x30A0 <= cp <= 0x30FF
+                or 0x4E00 <= cp <= 0x9FFF
+                or 0xFF00 <= cp <= 0xFFEF
+                or 0x3000 <= cp <= 0x303F
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _find_system_font(cjk: bool = False) -> str:
+        """Return the path to an available TTF/OTF/TTC font file on this system.
+
+        When cjk=True, prefer Japanese-capable fonts first.
+        """
         import glob as _glob
-        candidates = [
-            # Windows — check the Fonts directory for any TTF
+        japanese_candidates = [
+            r"C:\Windows\Fonts\YuGothM.ttc",
+            r"C:\Windows\Fonts\YuGothR.ttc",
+            r"C:\Windows\Fonts\meiryo.ttc",
+            r"C:\Windows\Fonts\msgothic.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJKjp-Regular.otf",
+        ]
+        latin_candidates = [
             r"C:\Windows\Fonts\arial.ttf",
             r"C:\Windows\Fonts\calibri.ttf",
             r"C:\Windows\Fonts\segoeui.ttf",
             r"C:\Windows\Fonts\tahoma.ttf",
             r"C:\Windows\Fonts\verdana.ttf",
-            # macOS
             "/Library/Fonts/Arial.ttf",
             "/System/Library/Fonts/Supplemental/Arial.ttf",
             "/System/Library/Fonts/Helvetica.ttc",
-            # Linux
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
         ]
-        for path in candidates:
+        ordered = (japanese_candidates + latin_candidates) if cjk else (latin_candidates + japanese_candidates)
+        for path in ordered:
             if os.path.isfile(path):
                 return path
-        # Fallback: grab the first TTF found in Windows Fonts
-        for pattern in [r"C:\Windows\Fonts\*.ttf", "/usr/share/fonts/**/*.ttf"]:
+        for pattern in [r"C:\Windows\Fonts\*.ttf", r"C:\Windows\Fonts\*.ttc", "/usr/share/fonts/**/*.ttf"]:
             matches = _glob.glob(pattern, recursive=True)
             if matches:
                 return matches[0]
@@ -1094,7 +1118,7 @@ class VideoProcessor:
                     .replace(":", "\\:").replace(",", "\\,"))
 
             # fontfile is required on Windows (Fontconfig not available)
-            font_path = self._find_system_font()
+            font_path = self._find_system_font(cjk=self._text_has_cjk(self.config.watermark_text or ""))
             if font_path:
                 # Forward-slashes, colon escaped for FFmpeg filter syntax
                 fp = font_path.replace("\\", "/").replace(":", "\\:")

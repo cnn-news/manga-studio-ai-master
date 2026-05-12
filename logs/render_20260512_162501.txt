@@ -1,0 +1,31 @@
+=== Manga Studio AI — render session 20260512_162501 ===
+Job: N/A
+────────────────────────────────────────────────
+[16:25:01] [INFO   ] Pipeline started — project: test, hw_encoder: nvenc
+[16:25:01] [INFO   ] Phase 0: Single-audio mode — validating inputs…
+[16:25:01] [INFO   ] Single-audio: 5 images, audio=107.489s, per_seg=21.497868s, est=118.24MB
+[16:25:01] [INFO   ] Rendering 5 segments with 5 parallel worker(s)
+[16:25:01] [INFO   ]   [1/5] 001.png effect=shake
+[16:25:01] [INFO   ]   [2/5] 002.png effect=zoom_pulse
+[16:25:01] [INFO   ]   [3/5] 003.png effect=pan_up
+[16:25:01] [INFO   ]   [4/5] 004.png effect=pan_vertical
+[16:25:01] [INFO   ]   [5/5] 005.png effect=pan_horizontal
+[16:26:28] [INFO   ]   [1/5] done (21.5s)
+[16:26:31] [INFO   ]   [5/5] done (21.5s)
+[16:26:32] [INFO   ]   [4/5] done (21.5s)
+[16:26:34] [INFO   ]   [2/5] done (21.5s)
+[16:26:34] [INFO   ]   [3/5] done (21.5s)
+[16:26:34] [INFO   ] Merging 5 segment(s) → merged.mp4
+[16:27:30] [INFO   ] Merge complete (xfade)
+[16:27:30] [INFO   ] Injecting audio: audio_001.wav
+[16:27:32] [INFO   ] Audio injection complete
+[16:27:32] [INFO   ] Applying watermark…
+[16:29:10] [INFO   ] Burning subtitles (preset=karaoke)…
+[16:30:03] [INFO   ] Finalizing → test.mp4
+[16:30:03] [INFO   ] Finalize: using libx264 (software)
+[16:31:29] [INFO   ] Final output: 91.72 MB, 105.5s, encoded in 86.46s
+[16:31:29] [INFO   ] Cleaned temp: C:\Users\ntd15\Downloads\JpChannel\_temp_e163feac
+[16:31:29] [INFO   ] Pipeline complete → C:\Users\ntd15\Downloads\JpChannel\test.mp4
+[16:31:29] [INFO   ] Deleted auto-generated SRT: subtitles_1778577901.srt
+────────────────────────────────────────────────
+=== Session ended ===

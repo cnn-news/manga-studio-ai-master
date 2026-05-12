@@ -3,6 +3,46 @@ import re
 
 from config import DEFAULT_VIDEO_CODEC
 
+
+def _has_cjk(text: str) -> bool:
+    """Return True if text contains any CJK / Japanese characters."""
+    for ch in text:
+        cp = ord(ch)
+        if (
+            0x3040 <= cp <= 0x309F   # Hiragana
+            or 0x30A0 <= cp <= 0x30FF  # Katakana
+            or 0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+            or 0xFF00 <= cp <= 0xFFEF  # Fullwidth forms
+            or 0x3000 <= cp <= 0x303F  # CJK Symbols and Punctuation
+        ):
+            return True
+    return False
+
+
+def _find_japanese_font() -> str:
+    """Return path to a Japanese-capable font file, or empty string if none found."""
+    candidates = [
+        # Windows 10/11 — high-quality Japanese fonts
+        r"C:\Windows\Fonts\YuGothM.ttc",      # Yu Gothic Medium
+        r"C:\Windows\Fonts\YuGothR.ttc",      # Yu Gothic Regular
+        r"C:\Windows\Fonts\YuGothB.ttc",      # Yu Gothic Bold
+        r"C:\Windows\Fonts\meiryo.ttc",       # Meiryo
+        r"C:\Windows\Fonts\meiryob.ttc",      # Meiryo Bold
+        r"C:\Windows\Fonts\msgothic.ttc",     # MS Gothic
+        r"C:\Windows\Fonts\msmincho.ttc",     # MS Mincho
+        # Linux — Noto CJK fonts
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJKjp-Regular.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        # macOS
+        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+        "/Library/Fonts/Osaka.ttf",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return ""
+
 # ── presets  (fontsize is in pixels at PlayResY=1080) ─────────────────────────
 
 SUBTITLE_PRESETS = {
@@ -231,6 +271,26 @@ class SubtitleEngine:
         settings = dict(SUBTITLE_PRESETS.get(preset) or SUBTITLE_PRESETS["youtube_classic"])
 
         fontname  = settings["fontname"]
+
+        # Auto-detect Japanese/CJK and switch to a compatible font
+        all_text = " ".join(e["text"] for e in entries)
+        if _has_cjk(all_text):
+            jp_font = _find_japanese_font()
+            if jp_font:
+                # Use font file path directly via ASS Attachment; set fontname to
+                # the display name that matches the ttc/ttf so libass finds it.
+                ttc_name_map = {
+                    "YuGothM.ttc": "Yu Gothic",
+                    "YuGothR.ttc": "Yu Gothic",
+                    "YuGothB.ttc": "Yu Gothic",
+                    "meiryo.ttc":  "Meiryo",
+                    "meiryob.ttc": "Meiryo",
+                    "msgothic.ttc": "MS Gothic",
+                    "msmincho.ttc": "MS Mincho",
+                }
+                ttc_base = os.path.basename(jp_font)
+                fontname = ttc_name_map.get(ttc_base, "Yu Gothic")
+
         fontsize  = settings["fontsize"]
         bold      = 1 if settings.get("bold")   else 0
         italic    = 1 if settings.get("italic")  else 0
@@ -404,6 +464,23 @@ class SubtitleEngine:
         bold      = 1 if settings.get("bold")   else 0
         italic    = 1 if settings.get("italic")  else 0
         margin_v  = settings.get("margin_v", 45)
+
+        # Detect CJK in SRT and override font if needed
+        try:
+            with open(srt_path, encoding="utf-8-sig") as _fh:
+                _raw = _fh.read()
+            if _has_cjk(_raw):
+                _jp = _find_japanese_font()
+                if _jp:
+                    _ttc_map = {
+                        "YuGothM.ttc": "Yu Gothic", "YuGothR.ttc": "Yu Gothic",
+                        "YuGothB.ttc": "Yu Gothic", "meiryo.ttc": "Meiryo",
+                        "meiryob.ttc": "Meiryo", "msgothic.ttc": "MS Gothic",
+                        "msmincho.ttc": "MS Mincho",
+                    }
+                    fontname = _ttc_map.get(os.path.basename(_jp), "Yu Gothic")
+        except Exception:
+            pass
 
         primary   = _color_to_ass(fontcolor)
         outline_c = _color_to_ass("black")

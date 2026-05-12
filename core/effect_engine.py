@@ -72,7 +72,7 @@ class EffectEngine:
             return (
                 f"[0:v]split=2[_bg][_fg];"
                 f"[_bg]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={_W}:{_H},gblur=sigma=30[_blurbg];"
+                f"crop={_W}:{_H},gblur=sigma=40:steps=6[_blurbg];"
                 f"[_fg]scale={_W}:{_H}:force_original_aspect_ratio=decrease:flags=lanczos[_fgfit];"
                 f"[_blurbg][_fgfit]overlay=(W-w)/2:(H-h)/2[_composite];"
                 f"[_composite]zoompan=z='{z_expr}':x='{safe_x}':y='{safe_y}':"
@@ -88,9 +88,11 @@ class EffectEngine:
         if fg_h % 2 != 0: fg_h -= 1
         return (
             f"[0:v]split=2[_bg][_fg];"
-            # static blurred background at full frame
-            f"[_bg]scale={_W}:{_H}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={_W}:{_H},gblur=sigma=30[_outblur];"
+            # static blurred background: scale up 2× before blur so downsample gives sharp edges,
+            # then scale to output — eliminates the blocky square artifacts from single-pass gblur
+            f"[_bg]scale={_W*2}:{_H*2}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={_W*2}:{_H*2},gblur=sigma=60:steps=6,"
+            f"scale={_W}:{_H}:flags=lanczos[_outblur];"
             # image cover-scaled & cropped to the allocated fg area
             f"[_fg]scale={fg_w}:{fg_h}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={fg_w}:{fg_h}[_fgfit];"
