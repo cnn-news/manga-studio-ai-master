@@ -575,6 +575,10 @@ function onProgress(data) {
     setText('progress-pct', pct + '%');
     const fill = $('progress-fill');
     if (fill) fill.style.width = pct + '%';
+    // Topbar glowing progress
+    const tb = $('render-topbar'), tbf = $('render-topbar-fill');
+    if (tb)  { tb.style.opacity  = '1'; }
+    if (tbf) { tbf.style.width   = pct + '%'; }
     if (data.current_phase) setText('phase-badge', _phaseLabel(data.current_phase));
     if (data.current_phase) setText('progress-phase-label', _phaseLabel(data.current_phase));
 
@@ -617,6 +621,9 @@ function onComplete(result) {
     const fill = $('progress-fill');
     if (fill) { fill.style.width = '100%'; fill.classList.add('done'); }
     setText('progress-pct', '100%');
+    // Topbar: fill to 100% then fade out
+    const tbf = $('render-topbar-fill'); if (tbf) tbf.style.width = '100%';
+    setTimeout(() => { const tb = $('render-topbar'); if (tb) tb.style.opacity = '0'; }, 1200);
     setText('phase-badge', 'Hoàn tất');
     addLog('✅ Render hoàn tất!', 'success');
     document.title = 'Manga Studio AI ✓';
@@ -898,6 +905,7 @@ const App = {
             'zoom_transition','iris_open','iris_close',
             'radial_wipe','dissolve','pixelize',
             'wipe_left','wipe_right','smooth_left','smooth_right',
+            'blur_dissolve','zoom_through',
         ];
         // Subtitle
         const subEnabled     = $('subtitle-enabled')?.checked ?? false;
@@ -927,14 +935,16 @@ const App = {
             output_folder:      $('output-folder')?.value?.trim()  || '',
             project_name:       $('project-name')?.value   || 'output',
             resolution:         $('resolution')?.value     || '1920x1080',
-            fps:                parseInt($('fps')?.value)   || 60,
+            fps:                this._getFps(),
             quality_preset:     $('quality')?.value        || 'balanced',
-            effect_mode:        effectRandom ? 'random' : 'fixed',
-            fixed_effect:       activeEffect?.dataset.effect || 'zoom_pulse',
+            effect_mode:        this._kbMode === 'smart'  ? 'smart_cycle'
+                                : this._kbMode === 'random' ? 'random' : 'fixed',
+            fixed_effect:       activeEffect?.dataset.effect || 'kb_smart_zoom_in',
             effect_speed:       $('effect-speed')?.value   || 'normal',
-            transition:         transRandom
+            transition:         this._transMode === 'auto'   ? 'auto'
+                                : this._transMode === 'random'
                                     ? transOptions[Math.floor(Math.random() * transOptions.length)]
-                                    : (activeTrans?.dataset.transition || 'fade_black'),
+                                    : (activeTrans?.dataset.transition || 'auto'),
             transition_duration: parseFloat($('transition-duration')?.value) || 0.5,
             subtitle_preset:    subEnabled ? (activeSubStyle?.dataset.style || 'karaoke') : 'none',
             subtitle_srt_path:  null,  // resolved below
@@ -950,6 +960,14 @@ const App = {
             audio_bitrate:      $('audio-bitrate')?.value  || '192k',
             scroll_mode:        scrollMode,
             image_scale:        (parseInt($('image-scale')?.value) || 100) / 100,
+            waveform_enabled:     $('waveform-enabled')?.checked ?? false,
+            waveform_height:      parseInt($('waveform-height')?.value) || 52,
+            waveform_width_ratio: (parseInt($('waveform-width')?.value) || 30) / 100,
+            watermark_path:       $('watermark-logo-path')?.value?.trim() || null,
+            render_progress_bar:  $('render-progress-bar')?.checked ?? false,
+            bgm_path:    $('bgm-path')?.value?.trim()  || null,
+            bgm_volume:  (parseInt($('bgm-volume')?.value) || 15) / 100,
+            bgm_ducking: $('bgm-ducking')?.checked ?? true,
             // Segments 2..N go to render_parts
             render_parts:       this._segments.slice(1)
                 .filter(s => s.image_folder?.trim() && s.audio_file?.trim())
@@ -1097,7 +1115,12 @@ const App = {
         this.switchEffectMode('scroll');
         // Effect
         const effRandom = document.getElementById('effect-random');
-        if (effRandom) { effRandom.checked = true; this.toggleEffectRandom(); }
+        this._kbMode = 'smart';
+        this._transMode = 'auto';
+        const kbSmartBtn = $('btn-kb-smart'); if (kbSmartBtn) kbSmartBtn.classList.add('active');
+        const transAutoBtn = $('btn-trans-auto'); if (transAutoBtn) transAutoBtn.classList.add('active');
+        if (effRandom) { effRandom.checked = false; }
+        const transRnd = $('transition-random'); if (transRnd) transRnd.checked = false;
         setVal('effect-speed', 'normal');
         setVal('image-scale', '70');
         const isv = document.getElementById('image-scale-val'); if (isv) isv.textContent = '70%';
@@ -1123,6 +1146,12 @@ const App = {
         const fi = document.getElementById('audio-fade-in-val');  if (fi) fi.textContent = '0.5s';
         setVal('audio-fade-out', '1.0');
         const fo = document.getElementById('audio-fade-out-val'); if (fo) fo.textContent = '1.0s';
+        this._clearBgm();
+        setVal('bgm-volume', '15');
+        const bgmV = $('bgm-vol-val'); if (bgmV) bgmV.textContent = '15%';
+        const bgmD = $('bgm-ducking'); if (bgmD) bgmD.checked = true;
+        setVal('watermark-logo-path', '');
+        const clrLogo = $('btn-clear-logo'); if (clrLogo) clrLogo.style.display = 'none';
         setVal('watermark-text', 'Manhwa Recap Hub');
         setVal('watermark-color', '#ff6b9d');
         setVal('watermark-bg-color', '#000000');
@@ -1145,6 +1174,14 @@ const App = {
         setVal('audio-bitrate',  '192k');
         setVal('intro-path',     '');
         setVal('outro-path',     '');
+        // Waveform
+        const wfChk = $('waveform-enabled');
+        if (wfChk) { wfChk.checked = false; this.toggleWaveform(); }
+        setVal('waveform-width',  '30');
+        setVal('waveform-height', '52');
+        const wfW = $('wf-width-val');  if (wfW)  wfW.textContent  = '30%';
+        const wfH = $('wf-height-val'); if (wfH)  wfH.textContent  = '52px';
+        const rpb = $('render-progress-bar'); if (rpb) rpb.checked = false;
         // Folder messages
         const imgMsg = document.getElementById('img-folder-msg');
         if (imgMsg) { imgMsg.innerHTML = ''; imgMsg.className = 'folder-msg'; }
@@ -1478,6 +1515,79 @@ const App = {
         this._syncSeg0ToMainInputs();
     },
 
+    // ── FPS radio helpers ─────────────────────────────────────
+    _onFpsChange(radio) {
+        document.querySelectorAll('.fps-radio-btn').forEach(l => l.classList.remove('active'));
+        if (radio.parentElement) radio.parentElement.classList.add('active');
+    },
+    _getFps() {
+        // Try radio buttons first; fallback to legacy select#fps
+        const r = document.querySelector('input[name="fps-choice"]:checked');
+        if (r) return parseInt(r.value) || 60;
+        return parseInt($('fps')?.value) || 60;
+    },
+
+    // ── BGM helpers ───────────────────────────────────────────
+    _onBgmChange() {
+        const v = $('bgm-path')?.value?.trim();
+        const opts = $('bgm-options');
+        const clr  = $('btn-clear-bgm');
+        if (opts) opts.style.display = v ? '' : 'none';
+        if (clr)  clr.style.display  = v ? '' : 'none';
+        if (v) this._animateDuckingViz();
+    },
+    _clearBgm() {
+        const inp = $('bgm-path'); if (inp) inp.value = '';
+        const opts = $('bgm-options'); if (opts) opts.style.display = 'none';
+        const clr  = $('btn-clear-bgm'); if (clr) clr.style.display = 'none';
+        if (this._duckRaf) { cancelAnimationFrame(this._duckRaf); this._duckRaf = null; }
+    },
+    _animateDuckingViz() {
+        const el = $('ducking-viz');
+        if (!el) return;
+        const N = 28;
+        if (!el.children.length) {
+            for (let i = 0; i < N; i++) {
+                const b = document.createElement('div');
+                b.style.cssText = 'flex:1;border-radius:2px 2px 0 0;min-height:2px;transition:height .12s';
+                el.appendChild(b);
+            }
+        }
+        const bars = el.children;
+        const H    = el.offsetHeight || 32;
+        let   t    = 0;
+        if (this._duckRaf) cancelAnimationFrame(this._duckRaf);
+        const tick = () => {
+            t += 0.04;
+            // Simulate voice envelope (pulses)
+            const hasDuck = $('bgm-ducking')?.checked ?? true;
+            for (let i = 0; i < N; i++) {
+                const pos   = i / N;
+                const voice = Math.max(0, Math.sin(pos * Math.PI * 3 + t) * 0.6
+                            + Math.sin(pos * Math.PI * 1.4 + t * 0.9) * 0.3 + 0.1);
+                const bgmH  = hasDuck
+                    ? (0.25 + (1 - voice) * 0.55)   // ducked: low when voice high
+                    : 0.65;                           // no ducking: constant
+                bars[i].style.height = (bgmH * H * 0.85) + 'px';
+                // Color: ducked=blue, voice active=orange
+                bars[i].style.background = hasDuck && voice > 0.5
+                    ? `rgba(255,140,0,${0.4 + voice * 0.5})`
+                    : `rgba(64,140,255,${0.4 + bgmH * 0.5})`;
+            }
+            this._duckRaf = requestAnimationFrame(tick);
+        };
+        tick();
+    },
+
+    // ── Logo helpers ──────────────────────────────────────────
+    _clearLogoPath() {
+        const inp = $('watermark-logo-path');
+        if (inp) inp.value = '';
+        const btn = $('btn-clear-logo');
+        if (btn) btn.style.display = 'none';
+        this._toggleWmStyleRows();
+    },
+
     // ── Watermark helpers ─────────────────────────────────────
     _syncWmColorInput() {
         const v = $('watermark-color')?.value || '#ffffff';
@@ -1530,23 +1640,76 @@ const App = {
 
     _toggleWmStyleRows() {
         const hasText = !!($('watermark-text')?.value?.trim());
+        const hasLogo = !!($('watermark-logo-path')?.value?.trim());
         const styleRow    = $('watermark-style-row');
         const bgColorRow  = $('watermark-bg-color-row');
         const bgRow       = $('watermark-bg-row');
         const preview     = $('wm-preview-canvas');
+        const clrLogo     = $('btn-clear-logo');
         if (styleRow)   styleRow.style.display   = hasText ? '' : 'none';
         if (bgColorRow) bgColorRow.style.display = hasText ? '' : 'none';
         if (bgRow)      bgRow.style.display      = hasText ? '' : 'none';
         if (preview)    preview.style.display    = hasText ? 'block' : 'none';
+        if (clrLogo)    clrLogo.style.display    = hasLogo ? '' : 'none';
         if (hasText) this._renderWmPreview();
     },
 
     // ── Effect toggle ──────────────────────────────────────────
     toggleEffectRandom() {
         const scrollOn = document.getElementById('scroll-mode')?.checked;
-        if (scrollOn) return;  // scroll mode overrides effect selector visibility
+        if (scrollOn) return;
         const on = document.getElementById('effect-random')?.checked;
         document.getElementById('effect-selector')?.classList.toggle('hidden', !!on);
+    },
+
+    // ── Ken Burns mode (smart / random / fixed) ───────────────
+    _kbMode: 'smart',   // default: Smart Auto
+    setKbMode(mode) {
+        const smartBtn  = $('btn-kb-smart');
+        const randomChk = $('effect-random');
+        const selector  = $('effect-selector');
+
+        if (mode === 'smart') {
+            this._kbMode = 'smart';
+            if (smartBtn)  smartBtn.classList.add('active');
+            if (randomChk) randomChk.checked = false;
+            if (selector)  selector.classList.add('hidden');
+        } else if (mode === 'random') {
+            this._kbMode = 'random';
+            if (smartBtn) smartBtn.classList.remove('active');
+            const scrollOn = document.getElementById('scroll-mode')?.checked;
+            if (!scrollOn && selector) selector.classList.add('hidden');
+        } else {
+            // fixed
+            this._kbMode = 'fixed';
+            if (smartBtn)  smartBtn.classList.remove('active');
+            if (randomChk) randomChk.checked = false;
+            if (selector)  selector.classList.remove('hidden');
+        }
+    },
+
+    // ── Transition mode (auto / random / fixed) ───────────────
+    _transMode: 'auto',   // default: Auto cycling
+    setTransMode(mode) {
+        const autoBtn   = $('btn-trans-auto');
+        const randomChk = $('transition-random');
+        const selector  = $('transition-selector');
+
+        if (mode === 'auto') {
+            this._transMode = 'auto';
+            if (autoBtn)   autoBtn.classList.add('active');
+            if (randomChk) randomChk.checked = false;
+            if (selector)  selector.classList.add('hidden');
+        } else if (mode === 'random') {
+            this._transMode = 'random';
+            if (autoBtn) autoBtn.classList.remove('active');
+            if (selector) selector.classList.add('hidden');
+        } else {
+            this._transMode = 'fixed';
+            if (autoBtn)   autoBtn.classList.remove('active');
+            if (randomChk) randomChk.checked = false;
+            if (selector)  selector.classList.remove('hidden');
+        }
     },
 
     selectEffect(el) {
@@ -1563,6 +1726,99 @@ const App = {
     selectTransition(el) {
         document.querySelectorAll('.fx-btn[data-transition]').forEach(b => b.classList.remove('active'));
         el.classList.add('active');
+    },
+
+    // ── Waveform toggle & preview ─────────────────────────────
+    toggleWaveform() {
+        const on    = $('waveform-enabled')?.checked;
+        const panel = $('waveform-panel');
+        if (panel) panel.style.display = on ? '' : 'none';
+        if (on) {
+            this._startWaveformPreview();
+        } else {
+            if (this._wfRaf) { cancelAnimationFrame(this._wfRaf); this._wfRaf = null; }
+        }
+    },
+
+    _startWaveformPreview() {
+        const canvas = $('waveform-preview');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const W   = canvas.width;   // 280
+        const H   = canvas.height;  // 56
+
+        // Phone-style: flat bottom, bars grow upward
+        // Matches FFmpeg: N_BARS=48, tmix=9 frames (~150ms smoothing at 60fps)
+        const N_BARS  = 24;   // half of backend N_BARS (preview is narrower)
+        const BAR_W   = Math.floor(W / N_BARS);
+        const GAP     = Math.max(1, Math.floor(BAR_W / 8));
+        const BODY_W  = BAR_W - GAP * 2;
+
+        // EMA alpha matched to FFmpeg tmix 9-frame triangle (≈ α=0.08 at 60fps)
+        const EMA = 0.08;
+        const amps    = new Float32Array(N_BARS).fill(0.08);
+        const targets = new Float32Array(N_BARS).fill(0.08);
+        let   t       = 0;
+
+        if (this._wfRaf) cancelAnimationFrame(this._wfRaf);
+
+        const draw = () => {
+            // clear only the bar area — prevents any shadow/glow persistence above bars
+            ctx.clearRect(0, 0, W, H);
+            t += 0.012;   // slow tick matches FFmpeg tmix smoothing
+
+            for (let i = 0; i < N_BARS; i++) {
+                const pos  = i / N_BARS;
+                const wave = Math.sin(pos * Math.PI * 3 + t) * 0.32
+                           + Math.sin(pos * Math.PI * 1.6 + t * 0.75) * 0.22
+                           + Math.sin(pos * Math.PI * 0.8 + t * 1.2)  * 0.13
+                           + 0.28;
+                targets[i] = Math.max(0.06, Math.min(1, wave));
+            }
+
+            // Low-pass smooth (EMA) — matches backend tmix 9-frame smoothing
+            for (let i = 0; i < N_BARS; i++) {
+                amps[i] += (targets[i] - amps[i]) * EMA;
+            }
+
+            // Draw bars — NO shadow above bars, only below/around the bar body
+            ctx.shadowBlur = 0;
+            for (let i = 0; i < N_BARS; i++) {
+                const amp  = amps[i];
+                const barH = Math.max(2, amp * (H - 3));
+                const x    = i * BAR_W + GAP;
+                const y    = H - barH;   // flat bottom, grows up
+
+                // Gradient: matches FFmpeg geq — TIP=(0,255,80) BASE=(200,255,200)
+                const grad = ctx.createLinearGradient(0, y, 0, H);
+                grad.addColorStop(0,    'rgb(0,255,80)');    // top tip  = vivid green
+                grad.addColorStop(0.55, 'rgb(60,255,110)');  // mid      = medium green
+                grad.addColorStop(1,    'rgb(200,255,200)'); // base     = pale green-white
+
+                ctx.fillStyle = grad;
+                ctx.fillRect(x, y, BODY_W, barH);  // sharp rectangular bar, no roundRect glow
+            }
+
+            // Subtle glow rendered AFTER all bars (below them visually)
+            // using low-opacity shadow on a re-draw pass — mirrors FFmpeg RGBA gblur
+            ctx.globalAlpha = 0.35;
+            for (let i = 0; i < N_BARS; i++) {
+                const amp  = amps[i];
+                if (amp < 0.1) continue;
+                const barH = amp * (H - 3);
+                const x    = i * BAR_W + GAP;
+                const y    = H - barH;
+                ctx.shadowColor = 'rgba(0,200,80,0.6)';
+                ctx.shadowBlur  = 5;
+                ctx.fillStyle   = 'rgba(0,255,80,0.3)';
+                ctx.fillRect(x, y, BODY_W, barH);
+            }
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur  = 0;
+
+            this._wfRaf = requestAnimationFrame(draw);
+        };
+        draw();
     },
 
     // ── Subtitle toggle & source ──────────────────────────────
@@ -2031,6 +2287,16 @@ document.addEventListener('DOMContentLoaded', () => {
     App._syncSeg0ToMainInputs();       // Keep hidden inputs in sync
     const _subDef = $('subtitle-enabled');
     if (_subDef) { _subDef.checked = true; App.toggleSubtitle(); } // Phụ đề ON
+
+    // Waveform: checkbox is checked by default → show panel + start preview immediately
+    App.toggleWaveform();
+
+    // Smart KB mode is default active — ensure btn-kb-smart has active class
+    const _kbBtn = $('btn-kb-smart');
+    if (_kbBtn) _kbBtn.classList.add('active');
+    // Auto transition mode is default active
+    const _taBtn = $('btn-trans-auto');
+    if (_taBtn) _taBtn.classList.add('active');
 
     // JS tooltip system (position:fixed, not clipped by sidebar overflow)
     _initTooltip();

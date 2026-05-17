@@ -37,6 +37,14 @@ class EffectEngine:
         "shake", "wobble",
     ]
 
+    # Smart Ken Burns cycle — 4 patterns that alternate per slide
+    SMART_CYCLE = [
+        "kb_smart_zoom_in",
+        "kb_smart_pan_right",
+        "kb_smart_zoom_out",
+        "kb_smart_pan_left",
+    ]
+
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _cycle_frames(self, speed: str, fps: int = DEFAULT_FPS) -> int:
@@ -45,6 +53,15 @@ class EffectEngine:
     def _total_frames(self, duration: float, fps: int = DEFAULT_FPS) -> int:
         # Small extra buffer; -shortest trims the output at audio length.
         return int(duration * fps) + fps
+
+    def _smoothstep(self, tf: int) -> str:
+        """FFmpeg expression for smoothstep easing: t²(3-2t), t = on/tf.
+
+        Produces ease-in-out motion: starts slow, accelerates, ends slow.
+        Range [0, 1] as on goes 0 → tf.
+        """
+        t = f"(on/{tf})"
+        return f"{t}*{t}*(3-2*{t})"
 
     def _zoompan(
         self,
@@ -227,24 +244,93 @@ class EffectEngine:
         y  = "(ih-ih/z)/2"
         return self._zoompan(z, x, y, tf, scale=scale)
 
+    # ── smart Ken Burns effects (smoothstep easing, no oscillation) ──────────
+
+    def kb_smart_zoom_in(self, duration: float, speed: str = "normal",
+                         scale: float = 1.0) -> str:
+        """Zoom in center: z 1.0 → 1.4, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = f"1.0+0.4*{ease}"
+        x    = "(iw-iw/z)/2"
+        y    = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_smart_zoom_out(self, duration: float, speed: str = "normal",
+                          scale: float = 1.0) -> str:
+        """Zoom out center: z 1.4 → 1.0, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = f"1.4-0.4*{ease}"
+        x    = "(iw-iw/z)/2"
+        y    = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_smart_pan_right(self, duration: float, speed: str = "normal",
+                           scale: float = 1.0) -> str:
+        """Pan left → right at z=1.35, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = "1.35"
+        x    = f"(iw-iw/z)*{ease}"
+        y    = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_smart_pan_left(self, duration: float, speed: str = "normal",
+                          scale: float = 1.0) -> str:
+        """Pan right → left at z=1.35, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = "1.35"
+        x    = f"(iw-iw/z)*(1-{ease})"
+        y    = "(ih-ih/z)/2"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_smart_pan_up(self, duration: float, speed: str = "normal",
+                        scale: float = 1.0) -> str:
+        """Pan bottom → top at z=1.35, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = "1.35"
+        x    = "(iw-iw/z)/2"
+        y    = f"(ih-ih/z)*(1-{ease})"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
+    def kb_smart_pan_down(self, duration: float, speed: str = "normal",
+                          scale: float = 1.0) -> str:
+        """Pan top → bottom at z=1.35, ease-in-out."""
+        tf   = self._total_frames(duration)
+        ease = self._smoothstep(tf)
+        z    = "1.35"
+        x    = "(iw-iw/z)/2"
+        y    = f"(ih-ih/z)*{ease}"
+        return self._zoompan(z, x, y, tf, scale=scale)
+
     # ── public API ────────────────────────────────────────────────────────────
 
     def get_effect(self, name: str, duration: float, speed: str = "normal",
                    scale: float = 1.0) -> str:
         dispatch = {
-            "zoom_pulse":     self.zoom_pulse,
-            "pan_horizontal": self.pan_horizontal,
-            "pan_vertical":   self.pan_vertical,
-            "pan_diagonal":   self.pan_diagonal,
-            "tilt_wave":      self.tilt_wave,
-            "kb_in":          self.kb_in,
-            "kb_out":         self.kb_out,
-            "pan_left":       self.pan_left,
-            "pan_right":      self.pan_right,
-            "pan_up":         self.pan_up,
-            "pan_down":       self.pan_down,
-            "shake":          self.shake,
-            "wobble":         self.wobble,
+            "zoom_pulse":         self.zoom_pulse,
+            "pan_horizontal":     self.pan_horizontal,
+            "pan_vertical":       self.pan_vertical,
+            "pan_diagonal":       self.pan_diagonal,
+            "tilt_wave":          self.tilt_wave,
+            "kb_in":              self.kb_in,
+            "kb_out":             self.kb_out,
+            "pan_left":           self.pan_left,
+            "pan_right":          self.pan_right,
+            "pan_up":             self.pan_up,
+            "pan_down":           self.pan_down,
+            "shake":              self.shake,
+            "wobble":             self.wobble,
+            # smart effects
+            "kb_smart_zoom_in":   self.kb_smart_zoom_in,
+            "kb_smart_zoom_out":  self.kb_smart_zoom_out,
+            "kb_smart_pan_right": self.kb_smart_pan_right,
+            "kb_smart_pan_left":  self.kb_smart_pan_left,
+            "kb_smart_pan_up":    self.kb_smart_pan_up,
+            "kb_smart_pan_down":  self.kb_smart_pan_down,
         }
         fn = dispatch.get(name)
         if fn is None:

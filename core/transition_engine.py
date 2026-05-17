@@ -34,7 +34,13 @@ _XFADE_MAP = {
     "wipe_right":     "wiperight",
     "smooth_left":    "smoothleft",
     "smooth_right":   "smoothright",
+    # smart transitions
+    "blur_dissolve":  "pixelize",   # pixelize ≈ blur-dissolve aesthetic
+    "zoom_through":   "zoomin",     # zoom punch through
 }
+
+# Auto mode cycles through these 4 transitions between slides
+_AUTO_CYCLE = ["fade_black", "cross_dissolve", "zoom_through", "blur_dissolve"]
 
 _XFADE_THRESHOLD = 20  # segments above this use concat demuxer
 
@@ -67,6 +73,10 @@ class TransitionEngine:
         "wipe_right":     "Wipe Right",
         "smooth_left":    "Smooth Left",
         "smooth_right":   "Smooth Right",
+        # smart transitions
+        "blur_dissolve":  "Blur Dissolve",
+        "zoom_through":   "Zoom Through",
+        "auto":           "Tự Động (4 kiểu)",
     }
 
     def get_xfade_filter(
@@ -137,7 +147,9 @@ class TransitionEngine:
             cmd += maps + encode_opts
             return cmd
 
-        xfade_name = _XFADE_MAP.get(transition, "fadeblack")
+        # "auto" mode: cycle through 4 transitions, one per slide boundary
+        is_auto = (transition == "auto")
+        default_xfade = _XFADE_MAP.get(transition, "fadeblack")
         durations = [_probe_duration(f) for f in segment_files]
 
         vf: list[str] = []
@@ -147,6 +159,13 @@ class TransitionEngine:
         for i in range(n - 1):
             cumulative += durations[i]
             offset = max(0.0, round(cumulative - (i + 1) * transition_duration, 3))
+
+            # Pick transition name: cycle through 4 if auto mode
+            if is_auto:
+                t_name = _AUTO_CYCLE[i % len(_AUTO_CYCLE)]
+                xfade_name = _XFADE_MAP.get(t_name, "fadeblack")
+            else:
+                xfade_name = default_xfade
 
             in_v  = f"[xv{i - 1}]" if i > 0 else f"[{i}:v]"
             out_v = "[vout]" if i == n - 2 else f"[xv{i}]"

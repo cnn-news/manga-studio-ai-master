@@ -27,6 +27,7 @@ from core.logger import RenderLogger
 from core.subtitle_engine import SubtitleEngine
 from core.transition_engine import TransitionEngine
 from core.validator import SystemValidator
+from core.waveform_engine import WaveformEngine
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ class RenderConfig:
     audio_fade:          float = 0.3
     bgm_path:            str | None = None
     bgm_volume:          float = 0.15
+    bgm_ducking:         bool  = True   # auto-duck BGM when voice is detected
     watermark_text:       str        = "Manhwa Recap Hub"
     watermark_path:       str | None = None
     watermark_position:   str        = "bottom_right"
@@ -99,6 +101,11 @@ class RenderConfig:
     render_parts:        list = field(default_factory=list)  # [{image_folder, audio_file}, ...]
     max_workers:         int | None = None   # None → auto (cpu_count // 2)
     scroll_mode:         bool = False        # stack images vertically, pan top→bottom
+    # ── waveform overlay ─────────────────────────────────────────────────
+    waveform_enabled:     bool  = False
+    waveform_height:      int   = 52      # bar area height in pixels
+    waveform_width_ratio: float = 0.30    # bar area width as fraction of video width
+    render_progress_bar:  bool  = False   # burn time-progress bar into video
 
 
 @dataclass
@@ -177,6 +184,7 @@ class VideoProcessor:
         self.transition_engine = TransitionEngine()
         self.audio_processor   = AudioProcessor()
         self.subtitle_engine   = SubtitleEngine()
+        self.waveform_engine   = WaveformEngine()
 
         # File logger (started lazily in run())
         self._logger = RenderLogger()
@@ -292,6 +300,10 @@ class VideoProcessor:
         if mode == "sequential":
             effects = self.effect_engine.EFFECTS
             return [effects[i % len(effects)] for i in range(count)]
+        if mode == "smart_cycle":
+            # Cycle through 4 smart Ken Burns patterns (ease-in-out, no oscillation)
+            cycle = self.effect_engine.SMART_CYCLE
+            return [cycle[i % len(cycle)] for i in range(count)]
         return [random.choice(self.effect_engine.EFFECTS) for _ in range(count)]
 
     # ── Phase 0: prepare ─────────────────────────────────────────────────
@@ -1093,91 +1105,259 @@ class VideoProcessor:
                 return matches[0]
         return ""
 
+    def _create_badge_png(
+        self,
+        logo_path: str,
+        text: str,
+        fontsize: int,
+        font_path: str,
+        text_color: str,
+        bg_color: str,
+        bg_opacity: float,
+        temp_dir: str,
+    ) -> tuple:
+        """Create a badge PNG: [logo | text] on a rounded-corner background.
+
+        Returns (path_to_png, True) on success, ("", False) on failure.
+        Uses Pillow; falls back gracefully if PIL is unavailable.
+        """
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+
+            pad    = 12   # padding around content
+            gap    = 10   # gap between logo and text
+
+            # ── Font ──────────────────────────────────────────────────────
+            try:
+                pil_font = ImageFont.truetype(font_path, fontsize) if font_path else ImageFont.load_default()
+            except Exception:
+                pil_font = ImageFont.load_default()
+
+            # ── Measure text ──────────────────────────────────────────────
+            dummy = Image.new("RGBA", (1, 1))
+            bbox  = ImageDraw.Draw(dummy).textbbox((0, 0), text, font=pil_font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            text_y_off = -bbox[1]   # vertical offset to align baseline
+
+            # ── Logo ──────────────────────────────────────────────────────
+            logo_h = max(th + 4, fontsize)
+            logo_h = logo_h if logo_h % 2 == 0 else logo_h + 1
+            logo_w = logo_h
+            if logo_path and os.path.isfile(logo_path):
+                logo_img = Image.open(logo_path).convert("RGBA")
+                logo_img = logo_img.resize((logo_w, logo_h), Image.LANCZOS)
+            else:
+                logo_img = None
+                logo_w   = 0
+
+            # ── Badge dimensions ──────────────────────────────────────────
+            content_h = max(logo_h if logo_img else 0, th)
+            badge_h   = content_h + pad * 2
+            badge_w   = pad + (logo_w + gap if logo_img else 0) + tw + pad
+            if badge_w % 2: badge_w += 1
+            if badge_h % 2: badge_h += 1
+
+            # Corner radius: subtle rounding similar to drawtext boxborderw look
+            # Scales with badge height but stays small (6-10 px) for a gentle effect
+            corner = max(6, min(10, badge_h // 6))
+
+            # ── Draw badge ────────────────────────────────────────────────
+            badge = Image.new("RGBA", (badge_w, badge_h), (0, 0, 0, 0))
+            draw  = ImageDraw.Draw(badge)
+
+            # Rounded background
+            def _hex(h):
+                h = h.lstrip("#")
+                return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+            bg_r, bg_g, bg_b = _hex(bg_color) if bg_color.startswith("#") else (0, 0, 0)
+            bg_a = int(bg_opacity * 255)
+            draw.rounded_rectangle(
+                [(0, 0), (badge_w - 1, badge_h - 1)],
+                radius=corner,
+                fill=(bg_r, bg_g, bg_b, bg_a),
+            )
+
+            # Paste logo (transparent background — no box behind logo)
+            x_cursor = pad
+            if logo_img:
+                logo_y = (badge_h - logo_h) // 2
+                badge.paste(logo_img, (x_cursor, logo_y), logo_img)
+                x_cursor += logo_w + gap
+
+            # Draw text
+            tc_r, tc_g, tc_b = _hex(text_color) if text_color.startswith("#") else (255, 255, 255)
+            text_y = (badge_h - th) // 2 + text_y_off
+            draw.text((x_cursor, text_y), text, font=pil_font, fill=(tc_r, tc_g, tc_b, 255))
+
+            # Pre-bake watermark_opacity into the alpha channel so FFmpeg
+            # can do a simple alpha-composite without colorchannelmixer.
+            # badge_op is passed as the 'temp_dir' caller's badge_op variable;
+            # here we receive it embedded in bg_opacity already — but we also
+            # need to scale by the watermark overall opacity (handled by caller).
+            # Leave that to the overlay; just ensure corners are correct.
+
+            # Save with full alpha information
+            out_path = os.path.join(temp_dir, f"wm_badge_{uuid.uuid4().hex[:8]}.png")
+            badge.save(out_path, "PNG")
+            return out_path, True
+
+        except ImportError:
+            self._log("Pillow not available — install Pillow for logo+text badge", "warning")
+            return "", False
+        except Exception as exc:
+            self._log(f"Badge PNG error: {exc}", "warning")
+            return "", False
+
+    @staticmethod
+    def _rounded_alpha_expr(r: int) -> str:
+        """geq alpha expression for rounded rectangle with corner radius r.
+        W, H refer to the logo frame size inside geq context.
+        """
+        tl = f"if(lt(X,{r})*lt(Y,{r}),lte(hypot(X-{r},Y-{r}),{r}),1)"
+        tr = f"if(gt(X,W-{r})*lt(Y,{r}),lte(hypot(X-(W-{r}),Y-{r}),{r}),1)"
+        bl = f"if(lt(X,{r})*gt(Y,H-{r}),lte(hypot(X-{r},Y-(H-{r})),{r}),1)"
+        br = f"if(gt(X,W-{r})*gt(Y,H-{r}),lte(hypot(X-(W-{r}),Y-(H-{r})),{r}),1)"
+        return f"255*{tl}*{tr}*{bl}*{br}"
+
+    def _build_drawtext_parts(self, fontsize: int, text_escaped: str,
+                               font_part: str, pos_x: str, pos_y: str) -> str:
+        """Build drawtext filter string from components."""
+        alpha     = self.config.watermark_opacity
+        raw_color = (self.config.watermark_color or "white").strip()
+        ffmpeg_color = ("0x" + raw_color[1:]) if (raw_color.startswith("#") and len(raw_color) == 7) else raw_color
+        bg_opacity = max(0.0, min(1.0, self.config.watermark_bg_opacity))
+
+        parts = [f"text='{text_escaped}'"]
+        if font_part:
+            parts.append(font_part)
+        parts += [
+            f"fontsize={fontsize}",
+            f"fontcolor={ffmpeg_color}@{alpha}",
+            f"shadowcolor=black@{alpha}:shadowx=2:shadowy=2",
+        ]
+        if bg_opacity > 0.01:
+            raw_bg = (self.config.watermark_bg_color or "#000000").strip()
+            ffmpeg_bg = ("0x" + raw_bg[1:]) if (raw_bg.startswith("#") and len(raw_bg) == 7) else raw_bg
+            parts.append(f"box=1:boxcolor={ffmpeg_bg}@{bg_opacity:.2f}:boxborderw=6")
+        parts += [f"x='{pos_x}'", f"y='{pos_y}'"]
+        return "drawtext=" + ":".join(parts)
+
     def apply_watermark(self, input_path: str, output_path: str) -> dict:
         has_text  = bool(self.config.watermark_text and self.config.watermark_text.strip())
-        has_image = bool(self.config.watermark_path)
-        if not has_text and not has_image:
+        has_logo  = bool(self.config.watermark_path and os.path.isfile(self.config.watermark_path))
+        if not has_text and not has_logo:
             return {"ok": True, "path": input_path, "skipped": True}
 
         self._log("Applying watermark…")
 
-        if has_text:
-            _POS_TEXT = {
-                "top_left":     "x=20:y=20",
-                "top_right":    "x=w-text_w-20:y=20",
-                "bottom_left":  "x=20:y=h-text_h-20",
-                "bottom_right": "x=w-text_w-20:y=h-text_h-20",
-            }
-            pos      = _POS_TEXT.get(self.config.watermark_position, "x=w-text_w-20:y=h-text_h-20")
-            alpha    = self.config.watermark_opacity
-            fontsize = max(18, int(self.config.watermark_scale * 120))
+        margin   = 18
+        fontsize = max(18, int(self.config.watermark_scale * 120))
+        pos_key  = self.config.watermark_position
 
-            # Escape special chars for drawtext
-            text = (self.config.watermark_text.strip()
-                    .replace("\\", "\\\\").replace("'", "\\'")
-                    .replace(":", "\\:").replace(",", "\\,"))
-
-            # fontfile is required on Windows (Fontconfig not available)
-            font_path = self._find_system_font(cjk=self._text_has_cjk(self.config.watermark_text or ""))
-            if font_path:
-                # Forward-slashes, colon escaped for FFmpeg filter syntax
-                fp = font_path.replace("\\", "/").replace(":", "\\:")
-                font_part = f"fontfile='{fp}'"
-            else:
-                font_part = ""
-                self._log("No system font found — drawtext may fail on Windows", "warning")
-
-            # Resolve text color — convert #RRGGBB → 0xRRGGBB for FFmpeg compatibility
-            raw_color = (self.config.watermark_color or "white").strip()
-            if raw_color.startswith("#") and len(raw_color) == 7:
-                ffmpeg_color = "0x" + raw_color[1:]
-            else:
-                ffmpeg_color = raw_color
-
-            bg_opacity = max(0.0, min(1.0, self.config.watermark_bg_opacity))
-
-            parts = [f"text='{text}'"]
-            if font_part:
-                parts.append(font_part)
-            parts += [
-                f"fontsize={fontsize}",
-                f"fontcolor={ffmpeg_color}@{alpha}",
-                f"shadowcolor=black@{alpha}:shadowx=2:shadowy=2",
-            ]
-            # Optional semi-transparent box behind text
-            if bg_opacity > 0.01:
-                raw_bg = (self.config.watermark_bg_color or "#000000").strip()
-                if raw_bg.startswith("#") and len(raw_bg) == 7:
-                    ffmpeg_bg = "0x" + raw_bg[1:]
-                else:
-                    ffmpeg_bg = raw_bg
-                parts.append(f"box=1:boxcolor={ffmpeg_bg}@{bg_opacity:.2f}:boxborderw=8")
-            parts.append(pos)
-            vf = "drawtext=" + ":".join(parts)
-
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-vf", vf,
-                "-map", "0:v", "-map", "0:a",
-                *self._sw_encode_opts(copy_audio=True),
-                output_path,
-            ]
+        # ── font setup ────────────────────────────────────────────────────────
+        font_path = self._find_system_font(cjk=self._text_has_cjk(self.config.watermark_text or ""))
+        if font_path:
+            fp        = font_path.replace("\\", "/").replace(":", "\\:")
+            font_part = f"fontfile='{fp}'"
         else:
-            # Image watermark
-            pos            = _WATERMARK_POS.get(self.config.watermark_position, "W-w-10:H-h-10")
-            filter_complex = (
-                f"[1:v]scale=iw*{self.config.watermark_scale}:-1,"
-                f"format=rgba,"
-                f"colorchannelmixer=aa={self.config.watermark_opacity}[wm];"
-                f"[0:v][wm]overlay={pos}[vout]"
+            font_part = ""
+            self._log("No system font — drawtext may fail on Windows", "warning")
+
+        if has_text:
+            text_escaped = (self.config.watermark_text.strip()
+                            .replace("\\", "\\\\").replace("'", "\\'")
+                            .replace(":", "\\:").replace(",", "\\,"))
+
+        if has_logo and has_text:
+            # ── Combined: PIL badge (logo + text on rounded bg) ───────────────
+            badge_path, badge_ok = self._create_badge_png(
+                logo_path=self.config.watermark_path,
+                text=self.config.watermark_text.strip(),
+                fontsize=fontsize,
+                font_path=self._find_system_font(
+                    cjk=self._text_has_cjk(self.config.watermark_text or "")),
+                text_color=self.config.watermark_color or "#ffffff",
+                bg_color=self.config.watermark_bg_color or "#000000",
+                bg_opacity=max(0.0, min(1.0, self.config.watermark_bg_opacity)),
+                temp_dir=self.temp_dir,
+            )
+            if badge_ok and badge_path:
+                pos = _WATERMARK_POS.get(pos_key, "W-w-10:H-h-10")
+                # format=rgba on the badge input preserves rounded-corner alpha.
+                # No colorchannelmixer — it can silently corrupt partial alpha values
+                # produced by PIL's anti-aliased rounded_rectangle corners.
+                fc = (
+                    f"[1:v]format=rgba[_badge];"
+                    f"[0:v][_badge]overlay={pos}:format=auto[vout]"
+                )
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", input_path,   # input 0: video
+                    "-i", badge_path,   # input 1: badge PNG (still image)
+                    "-filter_complex", fc,
+                    "-map", "[vout]", "-map", "0:a",
+                    *self._sw_encode_opts(copy_audio=True),
+                    output_path,
+                ]
+            else:
+                # Badge creation failed → fall back to text-only
+                self._log("Badge PNG failed — falling back to text watermark", "warning")
+                _POS_TEXT = {
+                    "top_left":     ("20", "20"),
+                    "top_right":    ("w-text_w-20", "20"),
+                    "bottom_left":  ("20", "h-text_h-20"),
+                    "bottom_right": ("w-text_w-20", "h-text_h-20"),
+                }
+                px, py = _POS_TEXT.get(pos_key, ("w-text_w-20", "h-text_h-20"))
+                vf = self._build_drawtext_parts(fontsize, text_escaped, font_part, px, py)
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", input_path,
+                    "-vf", vf,
+                    "-map", "0:v", "-map", "0:a",
+                    *self._sw_encode_opts(copy_audio=True),
+                    output_path,
+                ]
+
+        elif has_logo:
+            # ── Logo only with rounded corners ────────────────────────────────
+            logo_w_px = max(40, int(self.config.watermark_scale * 200))
+            logo_w_px = logo_w_px if logo_w_px % 2 == 0 else logo_w_px + 1
+            r         = max(4, logo_w_px // 5)
+            pos       = _WATERMARK_POS.get(pos_key, "W-w-10:H-h-10")
+            alpha_exp = self._rounded_alpha_expr(r)
+            fc        = (
+                f"[1:v]scale={logo_w_px}:-2,format=rgba,"
+                f"geq=r='p(X,Y)':g='p(X,Y)':b='p(X,Y)':a='{alpha_exp}'"
+                f",colorchannelmixer=aa={self.config.watermark_opacity}[_logo_r];"
+                f"[0:v][_logo_r]overlay={pos}:format=auto[vout]"
             )
             cmd = [
                 "ffmpeg", "-y",
                 "-i", input_path,
                 "-i", self.config.watermark_path,
-                "-filter_complex", filter_complex,
+                "-filter_complex", fc,
                 "-map", "[vout]", "-map", "0:a",
+                *self._sw_encode_opts(copy_audio=True),
+                output_path,
+            ]
+
+        else:
+            # ── Text only (original behavior) ─────────────────────────────────
+            _POS_TEXT = {
+                "top_left":     ("20", "20"),
+                "top_right":    ("w-text_w-20", "20"),
+                "bottom_left":  ("20", "h-text_h-20"),
+                "bottom_right": ("w-text_w-20", "h-text_h-20"),
+            }
+            px, py = _POS_TEXT.get(pos_key, ("w-text_w-20", "h-text_h-20"))
+            vf = self._build_drawtext_parts(fontsize, text_escaped, font_part, px, py)
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-vf", vf,
+                "-map", "0:v", "-map", "0:a",
                 *self._sw_encode_opts(copy_audio=True),
                 output_path,
             ]
@@ -1188,7 +1368,148 @@ class VideoProcessor:
             self._log(f"Watermark failed: {result['error']}", "error")
         return result
 
-    # ── Phase 3b: subtitles ───────────────────────────────────────────────
+    # ── Phase 3b: progress bar burned into video ─────────────────────────
+
+    def apply_progress_bar(self, input_path: str, output_path: str) -> dict:
+        """Burn a time-based glowing progress bar at the top of the video.
+
+        The bar grows from left (00:00) to right (end of video) in sync with
+        the video's own duration — letting viewers see playback position.
+        Three overlapping drawbox layers create a blue glow effect.
+        """
+        if not self.config.render_progress_bar:
+            return {"ok": True, "path": input_path, "skipped": True}
+
+        dur = _probe_duration(input_path)
+        if dur <= 0:
+            self._log("Progress bar: could not probe duration — skipping", "warning")
+            return {"ok": True, "path": input_path, "skipped": True}
+
+        self._log(f"Burning progress bar (duration={dur:.2f}s)…")
+
+        # Progress bar — positioned below waveform, same width as waveform.
+        #
+        # Strategy: crop ONLY the bar strip (7px) from the video, apply a simple
+        # geq expression, then overlay back at the exact position.
+        # Processing 1920×7 px (not full frame) makes geq extremely fast.
+        #
+        # geq expressions use ONLY 2-arg comparison functions (no min/clip/nested-if)
+        # so the FFmpeg parser never hits nesting limits.  All commas are inside
+        # single-quoted option values and are therefore protected.
+
+        # ── Compute bar position from waveform config ─────────────────────────
+        wf_ratio = max(0.10, min(1.0, self.config.waveform_width_ratio))
+        wf_w     = int(1920 * wf_ratio) & ~1   # make even
+        wf_h     = (self.config.waveform_height
+                    if self.config.waveform_height % 2 == 0
+                    else self.config.waveform_height + 1)
+        wf_y     = _H - wf_h - 10              # waveform top-y  (_MARGIN_BOTTOM=10)
+        x_off    = (1920 - wf_w) // 2          # same x as waveform
+
+        bar_h   = 5                             # progress bar height (px)
+        bar_top = wf_y + wf_h + 4              # 4 px gap below waveform
+        # Clamp strip so it never exceeds video bounds (1080 px height)
+        max_strip = _H - bar_top               # rows available from bar_top to bottom
+        strip_h   = min(bar_h + 2, max_strip)  # never overflow video height
+
+        if strip_h <= 0:
+            self._log("Progress bar: bar_top out of video bounds — skipping", "warning")
+            return {"ok": True, "path": input_path, "skipped": True}
+
+        dur_s = f"{dur:.4f}"
+
+        # In-bar condition (in strip coordinates — Y=0 is bar_top in the original video)
+        in_bar = (
+            f"gte(X,{x_off})"
+            f"*lte(X,{x_off}+{wf_w}*t/{dur_s})"
+            f"*lte(X,{x_off+wf_w})"   # hard clamp: bar max width = wf_w
+            f"*gte(Y,0)"
+            f"*lte(Y,{bar_h})"
+        )
+        is_top = f"gte(Y,0)*lte(Y,1)"  # top 2 rows = white highlight
+
+        # geq operates on yuv420p: r/g/b expressions control Y / Cb / Cr planes.
+        # White → Y=235, Cb=128, Cr=128 (broadcast-range YUV)
+        # Vivid green → Y=145, Cb=54, Cr=34   (approximate)
+        # Arithmetic blend (no if/clip): video + in_bar*(bar_colour - video)
+        y_top   = "235"                              # Y for white
+        y_green = "145"                              # Y for green
+        cb_top  = "128"                              # Cb for white (neutral)
+        cb_green = "54"                              # Cb for green
+        cr_top  = "128"                              # Cr for white
+        cr_green = "34"                              # Cr for green
+
+        y_col  = f"({y_top}*{is_top}+{y_green}*(1-({is_top})))"
+        cb_col = f"({cb_top}*{is_top}+{cb_green}*(1-({is_top})))"
+        cr_col = f"({cr_top}*{is_top}+{cr_green}*(1-({is_top})))"
+
+        r_e = f"p(X,Y)+{in_bar}*({y_col}-p(X,Y))"    # Y  plane (mapped via r=)
+        g_e = f"p(X,Y)+{in_bar}*({cb_col}-p(X,Y))"   # Cb plane (mapped via g=)
+        b_e = f"p(X,Y)+{in_bar}*({cr_col}-p(X,Y))"   # Cr plane (mapped via b=)
+
+        filter_complex = (
+            f"[0:v]split=2[_pv][_ptmp];"
+            # Crop the exact bar strip (clamped to video bounds)
+            f"[_ptmp]crop=W:{strip_h}:0:{bar_top}[_ps];"
+            # Colour the bar pixels using YUV plane expressions
+            f"[_ps]geq=r='{r_e}':g='{g_e}':b='{b_e}'[_pbar];"
+            # Overlay the coloured strip back at the exact vertical position
+            f"[_pv][_pbar]overlay=0:{bar_top}[out]"
+        )
+
+        preset = _QUALITY_PRESET.get(self.config.quality_preset, "medium")
+        crf    = _QUALITY_CRF.get(self.config.quality_preset, 23)
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-filter_complex", filter_complex,
+            "-map", "[out]", "-map", "0:a",
+            "-c:v", self.config.video_codec,
+            "-preset", preset, "-crf", str(crf),
+            "-c:a", "copy",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+        result = self._run_ffmpeg(cmd, timeout=1800)
+        result["path"] = output_path if result["ok"] else ""
+        if not result["ok"]:
+            self._log(f"Progress bar failed: {result['error']}", "error")
+        return result
+
+    # ── Phase 3c: waveform overlay ────────────────────────────────────────
+
+    def apply_waveform_overlay(self, input_path: str, output_path: str) -> dict:
+        """Overlay the orange→green audio waveform at the bottom of the video.
+
+        Skipped when waveform_enabled=False or when the input has no audio
+        stream (image-only segments before audio injection).
+        """
+        if not self.config.waveform_enabled:
+            return {"ok": True, "path": input_path, "skipped": True}
+
+        self._log("Applying waveform overlay…")
+        result = self.waveform_engine.apply_waveform(
+            input_path,
+            output_path,
+            fps=self.config.fps,
+            wf_width_ratio=self.config.waveform_width_ratio,
+            wf_height=self.config.waveform_height,
+            video_codec=self.config.video_codec,
+            quality_preset=self.config.quality_preset,
+        )
+        result["path"] = output_path if result["ok"] else ""
+        if not result["ok"]:
+            self._log(f"Waveform overlay failed: {result['error']}", "error")
+        return result
+
+    def _waveform_subtitle_margin(self) -> int | None:
+        """Return the subtitle margin_v override needed when waveform is on."""
+        if not self.config.waveform_enabled:
+            return None
+        return self.waveform_engine.subtitle_margin_v(self.config.waveform_height)
+
+    # ── Phase 3c: subtitles ───────────────────────────────────────────────
 
     def apply_subtitles(self, input_path: str, output_path: str) -> dict:
         if not self.config.subtitle_srt_path or self.config.subtitle_preset == "none":
@@ -1221,6 +1542,7 @@ class VideoProcessor:
             safe_srt = srt  # fall back to original path
 
         result: dict = {"ok": False, "error": "not started"}
+        margin_v_ovr = self._waveform_subtitle_margin()
         try:
             # Primary: ASS filter (supports karaoke/fade animations)
             cmd = self.subtitle_engine.burn_subtitles_command(
@@ -1229,6 +1551,7 @@ class VideoProcessor:
                 output_path,
                 preset=preset,
                 ass_output_path=safe_ass,
+                margin_v_override=margin_v_ovr,
             )
             result = self._run_ffmpeg(cmd, timeout=1800)
 
@@ -1323,13 +1646,30 @@ class VideoProcessor:
 
         # Optional BGM mix
         if self.config.bgm_path:
-            self._log(f"Mixing BGM (volume={self.config.bgm_volume})…")
-            bgm_mixed      = os.path.join(self.temp_dir, "bgm_mixed.mp4")
-            filter_complex = (
-                f"[0:a]volume=1.0[voice];"
-                f"[1:a]volume={self.config.bgm_volume}[bgm];"
-                f"[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-            )
+            vol    = self.config.bgm_volume
+            duck   = self.config.bgm_ducking
+            mode   = "ducking" if duck else "simple mix"
+            self._log(f"Mixing BGM (volume={vol}, {mode})…")
+            bgm_mixed = os.path.join(self.temp_dir, "bgm_mixed.mp4")
+
+            if duck:
+                # Audio ducking: sidechaincompress uses voice as sidechain to
+                # automatically lower BGM during speech, raise it during silence.
+                # attack=300ms, release=700ms → smooth 0.3 s fade each way.
+                filter_complex = (
+                    f"[0:a]asplit=2[_voice_out][_voice_sc];"
+                    f"[1:a]volume={vol}[_bgm_raw];"
+                    f"[_bgm_raw][_voice_sc]sidechaincompress="
+                    f"threshold=0.05:ratio=4:attack=300:release=700:level_sc=1[_bgm_ducked];"
+                    f"[_voice_out][_bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                )
+            else:
+                filter_complex = (
+                    f"[0:a]volume=1.0[_voice];"
+                    f"[1:a]volume={vol}[_bgm];"
+                    f"[_voice][_bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                )
+
             cmd_bgm = [
                 "ffmpeg", "-y",
                 "-i", source,
@@ -1346,6 +1686,7 @@ class VideoProcessor:
             bgm_res = self._run_ffmpeg(cmd_bgm, timeout=1800)
             if bgm_res["ok"]:
                 source = bgm_mixed
+                self._log("BGM mixed successfully")
             else:
                 self._log(f"BGM mix failed (continuing without): {bgm_res['error']}", "warning")
 
@@ -1421,6 +1762,8 @@ class VideoProcessor:
             sub_cfg.bgm_path          = None   # each part has its own audio
             sub_cfg.intro_path        = None
             sub_cfg.outro_path        = None
+            sub_cfg.waveform_enabled    = False  # applied once on merged video below
+            sub_cfg.render_progress_bar = False  # applied once on merged video below
 
             # Scale sub-progress into [idx/n .. (idx+1)/n] of overall
             base  = idx / n
@@ -1490,6 +1833,14 @@ class VideoProcessor:
         # (watermark already applied per-part to preserve quality per segment)
         current = output_file
 
+        if self.config.waveform_enabled:
+            self.progress.overall_progress = 0.975
+            self._notify_progress()
+            wf_path = os.path.join(self.temp_dir, "waveform.mp4")
+            wf = self.apply_waveform_overlay(current, wf_path)
+            if wf["ok"] and not wf.get("skipped"):
+                current = wf_path
+
         if self.config.subtitle_srt_path and self.config.subtitle_preset != "none":
             self.progress.current_phase    = "finalizing"
             self.progress.overall_progress = 0.98
@@ -1511,6 +1862,12 @@ class VideoProcessor:
             io = self.add_intro_outro(current, io_path)
             if io["ok"] and not io.get("skipped"):
                 current = io_path
+
+        if self.config.render_progress_bar:
+            pb_path = os.path.join(self.temp_dir, "progress_bar.mp4")
+            pb = self.apply_progress_bar(current, pb_path)
+            if pb["ok"] and not pb.get("skipped"):
+                current = pb_path
 
         if current != output_file:
             try:
@@ -1641,6 +1998,12 @@ class VideoProcessor:
             if wm["ok"] and not wm.get("skipped"):
                 current = wm_path
 
+        if self.config.waveform_enabled:
+            wf_path = os.path.join(self.temp_dir, "waveform.mp4")
+            wf = self.apply_waveform_overlay(current, wf_path)
+            if wf["ok"] and not wf.get("skipped"):
+                current = wf_path
+
         if self.config.subtitle_srt_path and self.config.subtitle_preset != "none":
             sub_path = os.path.join(self.temp_dir, "subtitled.mp4")
             sub = self.apply_subtitles(current, sub_path)
@@ -1652,6 +2015,12 @@ class VideoProcessor:
             io = self.add_intro_outro(current, io_path)
             if io["ok"] and not io.get("skipped"):
                 current = io_path
+
+        if self.config.render_progress_bar:
+            pb_path = os.path.join(self.temp_dir, "progress_bar.mp4")
+            pb = self.apply_progress_bar(current, pb_path)
+            if pb["ok"] and not pb.get("skipped"):
+                current = pb_path
 
         if self._cancel_event.is_set():
             return self._cancel()

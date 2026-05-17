@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Manga Studio AI</title>
   <link rel="stylesheet" href="/static/css/main.css">
+  <style>
+    /* FPS radio buttons — 3 nút nằm ngang */
+    .fps-radio-row { display:flex; gap:6px; }
+    .fps-radio-btn {
+      flex:1; display:flex; align-items:center; justify-content:center;
+      padding:4px 0; border-radius:var(--radius-sm,6px);
+      border:1px solid var(--border,rgba(255,255,255,.12));
+      cursor:pointer; font-size:.8rem; font-weight:500;
+      background:var(--bg-secondary,#1a1a2e); color:var(--text-secondary,#888);
+      transition:all .15s;
+    }
+    .fps-radio-btn input[type=radio] { display:none; }
+    .fps-radio-btn.active,
+    .fps-radio-btn:has(input:checked) {
+      background:var(--accent,#7c3aed); color:#fff;
+      border-color:var(--accent,#7c3aed);
+    }
+    .fps-radio-btn:hover:not(.active) { border-color:var(--accent,#7c3aed); color:var(--text,#e0e0f8); }
+  </style>
 </head>
 <body>
 
@@ -184,28 +203,40 @@
                   <!-- Sub-section: Hiệu ứng -->
                   <div class="mode-sub-hdr">
                     <span>Hiệu ứng Ken Burns</span>
-                    <span class="toggle-label-sm" id="effect-random-label">Ngẫu nhiên</span>
-                    <label class="toggle-switch toggle-xs" id="effect-random-wrap">
-                      <input type="checkbox" id="effect-random" checked onchange="App.toggleEffectRandom()">
-                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    </label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <div class="fx-btn active" id="btn-kb-smart" style="padding:2px 10px;font-size:.72rem;line-height:1.4"
+                           onclick="App.setKbMode('smart')">Smart Auto</div>
+                      <span class="toggle-label-sm" id="effect-random-label">Ngẫu nhiên</span>
+                      <label class="toggle-switch toggle-xs" id="effect-random-wrap">
+                        <input type="checkbox" id="effect-random" onchange="App.setKbMode(this.checked?'random':'fixed')">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                      </label>
+                    </div>
                   </div>
                   <div id="effect-selector" class="hidden">
                     <label class="field-label" style="margin-bottom:4px">Chọn hiệu ứng</label>
                     <div class="fx-grid">
-                      <div class="fx-btn active" data-effect="zoom_pulse"     onclick="App.selectEffect(this)"><span class="fx-icon">🔍</span><span>Zoom Pulse</span></div>
-                      <div class="fx-btn"         data-effect="pan_horizontal" onclick="App.selectEffect(this)"><span class="fx-icon">↔️</span><span>Pan Ngang</span></div>
-                      <div class="fx-btn"         data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
-                      <div class="fx-btn"         data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
-                      <div class="fx-btn"         data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
-                      <div class="fx-btn"         data-effect="kb_in"          onclick="App.selectEffect(this)"><span class="fx-icon">🔎</span><span>KB Zoom In</span></div>
-                      <div class="fx-btn"         data-effect="kb_out"         onclick="App.selectEffect(this)"><span class="fx-icon">🔭</span><span>KB Zoom Out</span></div>
-                      <div class="fx-btn"         data-effect="pan_left"       onclick="App.selectEffect(this)"><span class="fx-icon">⬅️</span><span>Pan Trái</span></div>
-                      <div class="fx-btn"         data-effect="pan_right"      onclick="App.selectEffect(this)"><span class="fx-icon">➡️</span><span>Pan Phải</span></div>
-                      <div class="fx-btn"         data-effect="pan_up"         onclick="App.selectEffect(this)"><span class="fx-icon">⬆️</span><span>Pan Lên</span></div>
-                      <div class="fx-btn"         data-effect="pan_down"       onclick="App.selectEffect(this)"><span class="fx-icon">⬇️</span><span>Pan Xuống</span></div>
-                      <div class="fx-btn"         data-effect="shake"          onclick="App.selectEffect(this)"><span class="fx-icon">📳</span><span>Camera Shake</span></div>
-                      <div class="fx-btn"         data-effect="wobble"         onclick="App.selectEffect(this)"><span class="fx-icon">〽️</span><span>Wobble</span></div>
+                      <!-- Smart easing effects -->
+                      <div class="fx-btn" data-effect="kb_smart_zoom_in"   onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Zoom In</span></div>
+                      <div class="fx-btn" data-effect="kb_smart_zoom_out"  onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Zoom Out</span></div>
+                      <div class="fx-btn" data-effect="kb_smart_pan_right" onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Pan →</span></div>
+                      <div class="fx-btn" data-effect="kb_smart_pan_left"  onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Pan ←</span></div>
+                      <div class="fx-btn" data-effect="kb_smart_pan_down"  onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Pan ↓</span></div>
+                      <div class="fx-btn" data-effect="kb_smart_pan_up"    onclick="App.selectEffect(this)"><span class="fx-icon">🎯</span><span>Smart Pan ↑</span></div>
+                      <!-- Classic effects -->
+                      <div class="fx-btn" data-effect="zoom_pulse"     onclick="App.selectEffect(this)"><span class="fx-icon">🔍</span><span>Zoom Pulse</span></div>
+                      <div class="fx-btn" data-effect="pan_horizontal" onclick="App.selectEffect(this)"><span class="fx-icon">↔️</span><span>Pan Ngang</span></div>
+                      <div class="fx-btn" data-effect="pan_vertical"   onclick="App.selectEffect(this)"><span class="fx-icon">↕️</span><span>Pan Dọc</span></div>
+                      <div class="fx-btn" data-effect="pan_diagonal"   onclick="App.selectEffect(this)"><span class="fx-icon">↗️</span><span>Pan Chéo</span></div>
+                      <div class="fx-btn" data-effect="tilt_wave"      onclick="App.selectEffect(this)"><span class="fx-icon">〰️</span><span>Tilt Wave</span></div>
+                      <div class="fx-btn" data-effect="kb_in"          onclick="App.selectEffect(this)"><span class="fx-icon">🔎</span><span>KB Zoom In</span></div>
+                      <div class="fx-btn" data-effect="kb_out"         onclick="App.selectEffect(this)"><span class="fx-icon">🔭</span><span>KB Zoom Out</span></div>
+                      <div class="fx-btn" data-effect="pan_left"       onclick="App.selectEffect(this)"><span class="fx-icon">⬅️</span><span>Pan Trái</span></div>
+                      <div class="fx-btn" data-effect="pan_right"      onclick="App.selectEffect(this)"><span class="fx-icon">➡️</span><span>Pan Phải</span></div>
+                      <div class="fx-btn" data-effect="pan_up"         onclick="App.selectEffect(this)"><span class="fx-icon">⬆️</span><span>Pan Lên</span></div>
+                      <div class="fx-btn" data-effect="pan_down"       onclick="App.selectEffect(this)"><span class="fx-icon">⬇️</span><span>Pan Xuống</span></div>
+                      <div class="fx-btn" data-effect="shake"          onclick="App.selectEffect(this)"><span class="fx-icon">📳</span><span>Camera Shake</span></div>
+                      <div class="fx-btn" data-effect="wobble"         onclick="App.selectEffect(this)"><span class="fx-icon">〽️</span><span>Wobble</span></div>
                     </div>
                   </div>
                   <div id="effect-speed-row" class="field-row">
@@ -220,11 +251,15 @@
                   <!-- Sub-section: Chuyển cảnh (moved from panel 3) -->
                   <div class="mode-sub-hdr">
                     <span>Chuyển cảnh</span>
-                    <span class="toggle-label-sm">Ngẫu nhiên</span>
-                    <label class="toggle-switch toggle-xs">
-                      <input type="checkbox" id="transition-random" checked onchange="App.toggleTransitionRandom()">
-                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    </label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <div class="fx-btn active" id="btn-trans-auto" style="padding:2px 10px;font-size:.72rem;line-height:1.4"
+                           onclick="App.setTransMode('auto')">Tự Động</div>
+                      <span class="toggle-label-sm">Ngẫu nhiên</span>
+                      <label class="toggle-switch toggle-xs">
+                        <input type="checkbox" id="transition-random" onchange="App.setTransMode(this.checked?'random':'fixed')">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                      </label>
+                    </div>
                   </div>
                   <div id="transition-selector" class="hidden">
                     <label class="field-label" style="margin-bottom:4px">Chọn chuyển cảnh</label>
@@ -252,6 +287,9 @@
                       <div class="fx-btn"         data-transition="wipe_right"     onclick="App.selectTransition(this)"><span class="fx-icon">🫱</span><span>Wipe →</span></div>
                       <div class="fx-btn"         data-transition="smooth_left"    onclick="App.selectTransition(this)"><span class="fx-icon">🌊</span><span>Smooth ←</span></div>
                       <div class="fx-btn"         data-transition="smooth_right"   onclick="App.selectTransition(this)"><span class="fx-icon">🌊</span><span>Smooth →</span></div>
+                      <!-- smart transitions -->
+                      <div class="fx-btn"         data-transition="blur_dissolve"  onclick="App.selectTransition(this)"><span class="fx-icon">🌫️</span><span>Blur Dissolve</span></div>
+                      <div class="fx-btn"         data-transition="zoom_through"   onclick="App.selectTransition(this)"><span class="fx-icon">🔭</span><span>Zoom Through</span></div>
                     </div>
                   </div>
                   <div class="field-row">
@@ -349,6 +387,119 @@
               </div>
             </div>
 
+            <!-- § Nâng Cao -->
+            <div class="settings-section" id="section-advanced">
+              <div class="section-header">
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
+                <span class="section-title">Nâng Cao</span>
+              </div>
+              <div class="section-body">
+                <div class="field-row field-row-toggle">
+                  <label class="field-label">
+                    Chuẩn hóa âm thanh
+                    <span class="info-icon" data-tooltip="Tự động cân bằng âm lượng giữa các đoạn audio — tránh tiếng quá to hoặc quá nhỏ giữa các slide.">i</span>
+                  </label>
+                  <label class="toggle-switch toggle-xs">
+                    <input type="checkbox" id="normalize-audio" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Fade in audio <span class="field-value" id="audio-fade-in-val">0.5s</span>
+                    <span class="info-icon" data-tooltip="Âm thanh tăng dần từ im lặng lên đủ âm lượng trong khoảng thời gian này ở đầu mỗi đoạn audio — tránh tiếng bật đột ngột.">i</span>
+                  </label>
+                  <input type="range" class="field-range" id="audio-fade-in" min="0" max="3" step="0.5" value="0.5" oninput="document.getElementById('audio-fade-in-val').textContent=this.value+'s'">
+                </div>
+                <div class="field-row">
+                  <label class="field-label">Fade out audio <span class="field-value" id="audio-fade-out-val">1.0s</span>
+                    <span class="info-icon" data-tooltip="Âm thanh giảm dần về im lặng trong khoảng thời gian này ở cuối mỗi đoạn audio — tránh tiếng cắt đột ngột khi hết bài.">i</span>
+                  </label>
+                  <input type="range" class="field-range" id="audio-fade-out" min="0" max="3" step="0.5" value="1.0" oninput="document.getElementById('audio-fade-out-val').textContent=this.value+'s'">
+                </div>
+
+                <!-- ── Nhạc nền (BGM) ─────────────────────────────────── -->
+                <div class="field-row">
+                  <label class="field-label">
+                    Nhạc nền (BGM)
+                    <span class="info-icon" data-tooltip="Nhạc nền phát trong suốt video. Dùng Audio Ducking để tự động giảm nhạc khi có giọng nói.">i</span>
+                  </label>
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="bgm-path" placeholder="Chọn hoặc nhập đường dẫn file nhạc…">
+                    <div class="btn-browse" onclick="App.browseFile('bgm-path',['.mp3','.wav','.m4a'],App._onBgmChange.bind(App))">
+                      <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                    </div>
+                    <div class="btn-xs" id="btn-clear-bgm" onclick="App._clearBgm()" title="Xóa nhạc nền" style="display:none">✕</div>
+                  </div>
+                </div>
+                <div id="bgm-options" style="display:none">
+                  <div class="field-row">
+                    <label class="field-label">
+                      Volume nhạc nền <span class="field-value" id="bgm-vol-val">15%</span>
+                      <span class="info-icon" data-tooltip="Mức âm lượng của nhạc nền so với giọng đọc. 10-20% thường phù hợp.">i</span>
+                    </label>
+                    <input type="range" class="field-range" id="bgm-volume"
+                           min="5" max="100" step="5" value="15"
+                           oninput="document.getElementById('bgm-vol-val').textContent=this.value+'%'">
+                  </div>
+                  <div class="field-row field-row-toggle">
+                    <label class="field-label">
+                      Audio Ducking
+                      <span class="info-icon" data-tooltip="Nhạc nền tự động giảm volume khi có giọng nói, tăng lại khi im lặng. Fade mượt 0.3 giây mỗi lần chuyển.">i</span>
+                    </label>
+                    <label class="toggle-switch">
+                      <input type="checkbox" id="bgm-ducking" checked>
+                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                  </div>
+                  <!-- Ducking visualizer mini -->
+                  <div id="ducking-viz" style="
+                    height:32px;border-radius:6px;overflow:hidden;
+                    background:linear-gradient(135deg,#0a0a1e,#12122a);
+                    border:1px solid rgba(100,160,255,.2);margin-top:2px;
+                    display:flex;align-items:flex-end;gap:1px;padding:0 4px 3px">
+                  </div>
+                </div>
+
+                <!-- ── Thanh tiến trình video ─────────────────────────── -->
+                <div class="field-row field-row-toggle">
+                  <label class="field-label">
+                    Thanh tiến trình video
+                    <span class="info-icon" data-tooltip="Đốt một thanh tiến trình thời gian (màu xanh phát sáng) vào đầu video — người xem thấy được thời lượng video đang chạy.">i</span>
+                  </label>
+                  <label class="toggle-switch toggle-xs">
+                    <input type="checkbox" id="render-progress-bar" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+
+                <!-- ── Sóng âm thanh ──────────────────────────────────── -->
+                <div class="field-row field-row-toggle">
+                  <label class="field-label">
+                    Sóng âm thanh
+                    <span class="info-icon" data-tooltip="Sóng âm thanh phone-style: bằng phẳng bên dưới, nhấp nhô phần trên, màu xanh lá + trắng.">i</span>
+                  </label>
+                  <label class="toggle-switch toggle-xs">
+                    <input type="checkbox" id="waveform-enabled" checked onchange="App.toggleWaveform()">
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+                <div id="waveform-panel">
+                  <div class="field-row">
+                    <label class="field-label">Chiều rộng sóng <span class="field-value" id="wf-width-val">30%</span></label>
+                    <input type="range" class="field-range" id="waveform-width" min="10" max="80" step="5" value="30"
+                           oninput="document.getElementById('wf-width-val').textContent=this.value+'%'">
+                  </div>
+                  <div class="field-row">
+                    <label class="field-label">Chiều cao sóng <span class="field-value" id="wf-height-val">52px</span></label>
+                    <input type="range" class="field-range" id="waveform-height" min="24" max="96" step="4" value="52"
+                           oninput="document.getElementById('wf-height-val').textContent=this.value+'px'">
+                  </div>
+                  <canvas id="waveform-preview" width="280" height="56"
+                          style="display:block;width:100%;height:56px;border-radius:6px;margin-top:4px;background:#0a0a14"></canvas>
+                </div>
+              </div>
+            </div>
+
           </div><!-- /s-panel-body effects -->
         </div><!-- /panel-effects -->
 
@@ -384,11 +535,20 @@
                 </div>
                 <div class="field-row">
                   <label class="field-label">Frame rate</label>
-                  <select class="field-select" id="fps">
-                    <option value="24">24 FPS</option>
-                    <option value="30">30 FPS</option>
-                    <option value="60" selected>60 FPS</option>
-                  </select>
+                  <div class="fps-radio-row">
+                    <label class="fps-radio-btn" id="fps-label-24">
+                      <input type="radio" name="fps-choice" value="24" id="fps-24" onchange="App._onFpsChange(this)">
+                      <span>24 FPS</span>
+                    </label>
+                    <label class="fps-radio-btn" id="fps-label-30">
+                      <input type="radio" name="fps-choice" value="30" id="fps-30" onchange="App._onFpsChange(this)">
+                      <span>30 FPS</span>
+                    </label>
+                    <label class="fps-radio-btn active" id="fps-label-60">
+                      <input type="radio" name="fps-choice" value="60" id="fps-60" checked onchange="App._onFpsChange(this)">
+                      <span>60 FPS</span>
+                    </label>
+                  </div>
                 </div>
                 <div class="field-row">
                   <label class="field-label">Chất lượng
@@ -407,39 +567,32 @@
               </div>
             </div>
 
-            <!-- § Nâng Cao -->
-            <div class="settings-section" id="section-advanced">
+            <!-- § Watermark & Xuất -->
+            <div class="settings-section" id="section-output">
               <div class="section-header">
-                <svg class="section-icon" viewBox="0 0 24 24"><path d="M15.95 10.78c.03-.25.05-.51.05-.78s-.02-.53-.06-.78l1.69-1.32c.15-.12.19-.34.1-.51l-1.6-2.77c-.1-.18-.31-.24-.49-.18l-1.99.8c-.42-.32-.86-.58-1.35-.78L12 2.34c-.03-.2-.2-.34-.4-.34H8.4c-.2 0-.36.14-.39.34l-.3 2.12c-.49.2-.94.47-1.35.78l-1.99-.8c-.18-.07-.39 0-.49.18l-1.6 2.77c-.1.18-.06.39.1.51l1.69 1.32c-.04.25-.07.52-.07.78s.02.53.06.78l-1.69 1.32c-.15.12-.19.34-.1.51l1.6 2.77c.1.18.31.24.49.18l1.99-.8c.42.32.86.58 1.35.78l.3 2.12c.04.2.2.34.4.34h3.2c.2 0 .37-.14.39-.34l.3-2.12c.49-.2.94-.46 1.35-.78l1.99.8c.18.07.39 0 .49-.18l1.6-2.77c.1-.18.06-.39-.1-.51l-1.67-1.32zM10 13c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
-                <span class="section-title">Nâng Cao</span>
+                <svg class="section-icon" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                <span class="section-title">Watermark &amp; Xuất</span>
               </div>
               <div class="section-body">
-                <div class="field-row field-row-toggle">
+
+                <!-- Logo + Text watermark -->
+                <div class="field-row">
                   <label class="field-label">
-                    Chuẩn hóa âm thanh
-                    <span class="info-icon" data-tooltip="Tự động cân bằng âm lượng giữa các đoạn audio — tránh tiếng quá to hoặc quá nhỏ giữa các slide.">i</span>
+                    Logo kênh
+                    <span class="info-icon" data-tooltip="Logo sẽ được bo tròn 4 góc tự động và hiển thị bên cạnh tên kênh trong video.">i</span>
                   </label>
-                  <label class="toggle-switch">
-                    <input type="checkbox" id="normalize-audio" checked>
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                  </label>
-                </div>
-                <div class="field-row">
-                  <label class="field-label">Fade in audio <span class="field-value" id="audio-fade-in-val">0.5s</span>
-                    <span class="info-icon" data-tooltip="Âm thanh tăng dần từ im lặng lên đủ âm lượng trong khoảng thời gian này ở đầu mỗi đoạn audio — tránh tiếng bật đột ngột.">i</span>
-                  </label>
-                  <input type="range" class="field-range" id="audio-fade-in" min="0" max="3" step="0.5" value="0.5" oninput="document.getElementById('audio-fade-in-val').textContent=this.value+'s'">
-                </div>
-                <div class="field-row">
-                  <label class="field-label">Fade out audio <span class="field-value" id="audio-fade-out-val">1.0s</span>
-                    <span class="info-icon" data-tooltip="Âm thanh giảm dần về im lặng trong khoảng thời gian này ở cuối mỗi đoạn audio — tránh tiếng cắt đột ngột khi hết bài.">i</span>
-                  </label>
-                  <input type="range" class="field-range" id="audio-fade-out" min="0" max="3" step="0.5" value="1.0" oninput="document.getElementById('audio-fade-out-val').textContent=this.value+'s'">
+                  <div class="input-with-btn">
+                    <input type="text" class="field-input" id="watermark-logo-path" placeholder="Chọn hoặc nhập đường dẫn logo…" oninput="App._toggleWmStyleRows()">
+                    <div class="btn-browse" onclick="App.browseFile('watermark-logo-path',['.png','.jpg','.jpeg','.webp'],App._toggleWmStyleRows.bind(App))">
+                      <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                    </div>
+                    <div class="btn-xs" id="btn-clear-logo" onclick="App._clearLogoPath()" title="Xóa logo" style="display:none">✕</div>
+                  </div>
                 </div>
                 <div class="field-row">
                   <label class="field-label">
-                    Watermark
-                    <span class="info-icon" data-tooltip="Thêm chữ ký hoặc tên kênh vào góc video. Phụ đề luôn hiển thị đè lên trên watermark.">i</span>
+                    Tên kênh
+                    <span class="info-icon" data-tooltip="Tên kênh hiển thị cạnh logo trong video.">i</span>
                   </label>
                   <input type="text" class="field-input" id="watermark-text" placeholder="© Your Channel" value="Manhwa Recap Hub" oninput="App._toggleWmStyleRows()">
                 </div>
@@ -458,7 +611,7 @@
                   </div>
                 </div>
                 <div class="field-row" id="watermark-bg-color-row" style="display:none">
-                  <label class="field-label">Màu nền</label>
+                  <label class="field-label">Màu nền badge</label>
                   <div class="wm-color-row">
                     <div class="wm-swatches">
                       <div class="wm-swatch" style="background:#000"    onclick="document.getElementById('watermark-bg-color').value='#000000';App._syncWmBgColorInput()" title="Đen"></div>
@@ -474,17 +627,19 @@
                 <div class="field-row" id="watermark-bg-row" style="display:none">
                   <label class="field-label">
                     Độ mờ nền <span class="field-value" id="wm-bg-val">70%</span>
-                    <span class="info-icon" data-tooltip="Độ đục của hộp nền sau chữ watermark. 0% = không có nền, 100% = nền đặc.">i</span>
+                    <span class="info-icon" data-tooltip="Độ đục của hộp nền bao quanh logo + tên kênh.">i</span>
                   </label>
                   <input type="range" class="field-range" id="watermark-bg-opacity"
                          min="0" max="100" step="5" value="70"
                          oninput="document.getElementById('wm-bg-val').textContent=this.value+'%';App._renderWmPreview()">
                 </div>
                 <canvas id="wm-preview-canvas" class="wm-preview-canvas" width="280" height="54" style="display:none"></canvas>
+
+                <!-- Bitrate -->
                 <div class="field-row">
                   <label class="field-label">
                     Video bitrate
-                    <span class="info-icon" data-tooltip="Chất lượng hình ảnh video. Cao = sắc nét hơn nhưng file lớn hơn. Khuyến nghị: 8M (Full HD), 20M (4K).">i</span>
+                    <span class="info-icon" data-tooltip="Khuyến nghị: 8M (Full HD), 20M (4K).">i</span>
                   </label>
                   <select class="field-select" id="video-bitrate">
                     <option value="2M">2 Mbps (thấp)</option>
@@ -498,7 +653,7 @@
                 <div class="field-row">
                   <label class="field-label">
                     Audio bitrate
-                    <span class="info-icon" data-tooltip="Chất lượng âm thanh. Cao hơn = rõ hơn. 192k là chuẩn YouTube; 320k cho chất lượng cao nhất.">i</span>
+                    <span class="info-icon" data-tooltip="192k là chuẩn YouTube.">i</span>
                   </label>
                   <select class="field-select" id="audio-bitrate">
                     <option value="96k">96 kbps</option>
@@ -511,14 +666,14 @@
                 <div class="field-row">
                   <label class="field-label">Video intro</label>
                   <div class="input-with-btn">
-                    <input type="text" class="field-input" id="intro-path" placeholder="Chọn file .mp4…" readonly>
+                    <input type="text" class="field-input" id="intro-path" placeholder="Chọn hoặc nhập đường dẫn…">
                     <div class="btn-browse" onclick="App.browseFile('intro-path',['.mp4','.avi','.mov','.mkv'])"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></div>
                   </div>
                 </div>
                 <div class="field-row">
                   <label class="field-label">Video outro</label>
                   <div class="input-with-btn">
-                    <input type="text" class="field-input" id="outro-path" placeholder="Chọn file .mp4…" readonly>
+                    <input type="text" class="field-input" id="outro-path" placeholder="Chọn hoặc nhập đường dẫn…">
                     <div class="btn-browse" onclick="App.browseFile('outro-path',['.mp4','.avi','.mov','.mkv'])"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></div>
                   </div>
                 </div>
@@ -534,6 +689,17 @@
 
     <!-- ── MAIN PANEL ─────────────────────────────────────────────────── -->
     <main class="main-panel">
+      <!-- ── Top progress bar (glowing blue, chạy khi render) ─────── -->
+      <div id="render-topbar" style="
+        position:absolute;top:0;left:0;right:0;height:3px;z-index:200;
+        pointer-events:none;opacity:0;transition:opacity .3s;overflow:hidden">
+        <div id="render-topbar-fill" style="
+          height:100%;width:0%;
+          background:linear-gradient(90deg,#0055ff,#00aaff,#00eaff);
+          box-shadow:0 0 10px #00aaff,0 0 20px #0055ff;
+          transition:width .4s ease-out;border-radius:0 2px 2px 0">
+        </div>
+      </div>
 
       <!-- ── Always-visible: stat cards ──────────────────────────────── -->
       <div class="main-top-strip">

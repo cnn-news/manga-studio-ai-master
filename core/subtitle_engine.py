@@ -261,7 +261,8 @@ class SubtitleEngine:
 
     # ── ASS generator ─────────────────────────────────────────────────────
 
-    def generate_ass(self, srt_path: str, preset: str, output_path: str) -> str:
+    def generate_ass(self, srt_path: str, preset: str, output_path: str,
+                     margin_v_override: int | None = None) -> str:
         """Convert SRT → styled ASS file for the given preset.
 
         Uses PlayResX=1920, PlayResY=1080.  Font sizes in presets are in px.
@@ -277,8 +278,6 @@ class SubtitleEngine:
         if _has_cjk(all_text):
             jp_font = _find_japanese_font()
             if jp_font:
-                # Use font file path directly via ASS Attachment; set fontname to
-                # the display name that matches the ttc/ttf so libass finds it.
                 ttc_name_map = {
                     "YuGothM.ttc": "Yu Gothic",
                     "YuGothR.ttc": "Yu Gothic",
@@ -296,7 +295,7 @@ class SubtitleEngine:
         italic    = 1 if settings.get("italic")  else 0
         borderw   = settings.get("borderw", 1)
         shadow    = settings.get("shadow", 0)
-        margin_v  = settings.get("margin_v", 45)
+        margin_v  = margin_v_override if margin_v_override is not None else settings.get("margin_v", 45)
         bg_color  = settings.get("bg_color", "none")
         anim      = settings.get("anim", "fade")
 
@@ -308,6 +307,11 @@ class SubtitleEngine:
         if bg_color and bg_color != "none":
             back_c       = _color_to_ass(bg_color)
             border_style = 4   # filled box
+            # Outline > 0 on a filled box (BorderStyle=4):
+            #   • extends the box creating natural text padding
+            #   • libass renders outline corners as rounded → rounded box corners
+            # Use max(existing, 10) so presets with explicit borderw keep their intent.
+            borderw = max(borderw, 10)
         else:
             back_c       = "&H00000000"
             border_style = 1   # outline only
@@ -402,6 +406,7 @@ class SubtitleEngine:
         preset: str = "youtube_classic",
         custom: dict = None,
         ass_output_path: str = None,
+        margin_v_override: int | None = None,
     ) -> list:
         """Return FFmpeg command that burns styled+animated subtitles.
 
@@ -412,7 +417,8 @@ class SubtitleEngine:
         if ass_output_path is None:
             ass_output_path = os.path.splitext(srt_path)[0] + f"_{preset}.ass"
         try:
-            self.generate_ass(srt_path, preset, ass_output_path)
+            self.generate_ass(srt_path, preset, ass_output_path,
+                              margin_v_override=margin_v_override)
             # Use explicit filename= option; on Windows the drive colon must be
             # escaped as \: inside single-quoted filter values.
             vf = f"ass=filename='{_escape_filter_path(ass_output_path)}'"
